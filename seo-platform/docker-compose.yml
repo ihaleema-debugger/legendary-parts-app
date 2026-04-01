@@ -1,0 +1,135 @@
+version: "3.9"
+
+services:
+  # ── Reverse Proxy ──
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - frontend_build:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - web
+
+  # ── Frontend (build stage → served by nginx) ──
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    volumes:
+      - frontend_build:/app/dist
+    networks:
+      - web
+
+  # ── Backend API ──
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - web
+      - internal
+
+  # ── Celery Worker ──
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.worker worker --loglevel=info --concurrency=4
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ── Celery Beat (scheduled tasks) ──
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.tasks.worker beat --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ── PostgreSQL ──
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-seoplatform}
+      POSTGRES_USER: ${POSTGRES_USER:-seoplatform}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-seoplatform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ── Redis ──
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ── Playwright (headless browser for JS-rendered pages) ──
+  playwright:
+    image: mcr.microsoft.com/playwright/python:v1.42.0-jammy
+    command: python -m playwright install && sleep infinity
+    restart: unless-stopped
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+  redis_data:
+  frontend_build:
+
+networks:
+  web:
+    driver: bridge
+  internal:
+    driver: bridge
