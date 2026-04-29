@@ -144,3 +144,33 @@ class TrelloClient:
         )
         self._raise_for_status(resp, f"/cards/{card_id}/actions/comments")
         logger.info("Added comment to card %r", card_id)
+
+    def uncheck_all_checklist_items(self, card_id: str) -> None:
+        """Set all items in the Validations checklist back to incomplete.
+
+        Used when Stage 9 fails with a Drive-resolve error: the edit is already
+        in the doc but the comment is still open, so both checklist items must
+        be unticked to prevent the next poller cycle from immediately re-triggering
+        Stage 9 and applying the same edit a second time.
+        """
+        resp = self._request("get", f"/cards/{card_id}/checklists")
+        self._raise_for_status(resp, f"/cards/{card_id}/checklists")
+
+        for checklist in resp.json():
+            if checklist["name"] == self.checklist_name:
+                for item in checklist.get("checkItems", []):
+                    self._request(
+                        "put",
+                        f"/cards/{card_id}/checkItem/{item['id']}",
+                        data={"state": "incomplete"},
+                    )
+                logger.info(
+                    "Unchecked all items in checklist %r on card %r",
+                    self.checklist_name, card_id,
+                )
+                return
+
+        logger.warning(
+            "Checklist %r not found on card %r — could not uncheck items",
+            self.checklist_name, card_id,
+        )
