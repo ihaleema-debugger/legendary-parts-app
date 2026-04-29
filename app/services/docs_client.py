@@ -134,13 +134,23 @@ def apply_text_replacement(
 
 
 def resolve_comment(doc_id: str, comment_id: str) -> None:
-    """Mark a Google Doc comment as resolved via Drive API."""
+    """Mark a Google Doc comment as resolved via Drive API.
+
+    The Drive v3 comments.update endpoint requires the existing comment
+    content to be included in the PATCH body alongside resolved=True;
+    omitting it yields HttpError 400 "Comment content is required".
+    """
     drive = _get_drive_service()
+    existing = drive.comments().get(
+        fileId=doc_id,
+        commentId=comment_id,
+        fields="content",
+    ).execute()
     drive.comments().update(
         fileId=doc_id,
         commentId=comment_id,
         fields="id,resolved",
-        body={"resolved": True},
+        body={"resolved": True, "content": existing["content"]},
     ).execute()
     logger.info("Resolved comment %r on doc %r", comment_id, doc_id)
 
