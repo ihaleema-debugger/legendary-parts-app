@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import re
-from html.parser import HTMLParser
 from typing import Optional
+
+from slugify import slugify as _slug_lib
 
 from .drive_uploader import _get_service
 
@@ -11,20 +12,39 @@ from .drive_uploader import _get_service
 def fetch_doc(doc_id: str) -> dict:
     """Export a Google Doc as HTML and return a structured dict.
 
+    Title resolution order:
+      1. Drive metadata filename (most reliable — always set by the user)
+      2. HTML body parsing: <h1>, then <p class="title">, then <p class="subtitle">
+      3. RuntimeError — never silently falls back to "Untitled"
+
     Returns:
         {
             "title": str,
             "slug": str,
-            "meta_description": "str | None",
+            "meta_description": str | None,
             "body_html": str,
             "faq": list[{"question": str, "answer": str}],
             "raw_html": str,
         }
 
     Raises:
-        RuntimeError: if the doc is not found or the service account lacks access.
+        RuntimeError: if the doc is not found, the service account lacks access,
+                      or no title can be determined from any source.
     """
     service = _get_service()
+
+    # Primary title source: Drive metadata filename
+    try:
+        file_metadata = service.files().get(
+            fileId=doc_id,
+            fields="name",
+            supportsAllDrives=True,
+        ).execute()
+        drive_filename = file_metadata.get("name", "").strip()
+    except Exception as e:
+        raise RuntimeError(f"Could not fetch metadata for doc {doc_id!r}: {e}") from e
+
+    # HTML export
     try:
         raw_bytes = (
             service.files()
@@ -38,11 +58,21 @@ def fetch_doc(doc_id: str) -> dict:
         ) from e
 
     raw_html: str = raw_bytes.decode("utf-8") if isinstance(raw_bytes, bytes) else raw_bytes
+    body_html = _extract_body(raw_html)
 
-    title = _extract_title_from_html(raw_html)
+    # Secondary title source: HTML body parsing
+    body_title = _extract_title_from_body(body_html)
+
+    title = drive_filename or body_title
+    if not title:
+        raise RuntimeError(
+            f"Could not extract title from doc {doc_id!r}. "
+            "Drive filename was empty and no recognizable title element found in body HTML. "
+            "Cannot proceed — translated doc filenames would be invalid."
+        )
+
     meta = _extract_meta_description(raw_html)
     faq = _extract_faq(raw_html)
-    body_html = _extract_body(raw_html)
 
     return {
         "title": title,
@@ -81,15 +111,23 @@ def get_doc_parent_folder(doc_id: str) -> Optional[str]:
 
 # ── HTML parsing helpers ──────────────────────────────────────────────────────
 
-def _extract_title_from_html(html: str) -> str:
-    """Extract the first <h1> text, falling back to <title> tag."""
-    m = re.search(r"<h1[^>]*>(.*?)</h1>", html, re.DOTALL | re.IGNORECASE)
-    if m:
-        return _strip_tags(m.group(1)).strip()
-    m = re.search(r"<title[^>]*>(.*?)</title>", html, re.DOTALL | re.IGNORECASE)
-    if m:
-        return _strip_tags(m.group(1)).strip()
-    return "Untitled"
+def _extract_title_from_body(html: str) -> Optional[str]:
+    """Try to extract a title from the HTML body. Returns None if nothing found.
+
+    Tries in order: <h1>, <p class="...title...">, <p class="...subtitle...">.
+    """
+    patterns = [
+        r"<h1[^>]*>(.*?)</h1>",
+        r'<p[^>]*class="[^"]*title[^"]*"[^>]*>(.*?)</p>',
+        r'<p[^>]*class="[^"]*subtitle[^"]*"[^>]*>(.*?)</p>',
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, html, re.IGNORECASE | re.DOTALL)
+        if m:
+            candidate = re.sub(r"<[^>]+>", "", m.group(1)).strip()
+            if candidate:
+                return candidate
+    return None
 
 
 def _extract_meta_description(html: str) -> Optional[str]:
@@ -142,7 +180,11 @@ def _strip_tags(text: str) -> str:
 
 
 def _slugify(text: str) -> str:
-    text = text.lower().strip()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_]+", "-", text)
-    return text[:80].rstrip("-") or "untitled"
+    """Convert a title to a URL-safe slug.
+
+    Apostrophes are stripped before slugifying so that "Buyer's" becomes
+    "buyers" rather than "buyer-s". All other non-ASCII chars are
+    transliterated. Consecutive hyphens are collapsed by python-slugify.
+    """
+    text = re.sub(r"'", "", text)
+    return _slug_lib(text, max_length=80)
