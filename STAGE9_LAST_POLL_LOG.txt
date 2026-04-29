@@ -1,0 +1,63 @@
+Stage 9 — Last poll run log (Run 2, 2026-04-29 16:01–16:02)
+============================================================
+Run after fix(docs_client): include content field in resolve_comment PATCH body
+
+2026-04-29 16:01:54,176 [INFO] app.services.trello_client — GET https://api.trello.com/1/boards/EMDrB1jJ/lists
+2026-04-29 16:01:55,409 [INFO] app.services.trello_client — Resolved list IDs: {'Blog drafts': '69f0ac01212b2a7ae9d1e10b', 'Translating': '69f0ac01212b2a7ae9d1e10c', 'Done': '69f0ac01212b2a7ae9d1e10d'}
+2026-04-29 16:01:55,412 [INFO] __main__ — poll_once: 1 pending card(s)
+2026-04-29 16:01:55,412 [INFO] __main__ — Checking card '69f0ad3f07163694906a201e' (doc_id='10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4')
+2026-04-29 16:01:55,789 [INFO] app.services.trello_client — Checklist state for card '69f0ad3f07163694906a201e': {'Validated by Haleema': True, 'Validated by Jeremy': True}
+2026-04-29 16:01:55,789 [INFO] __main__ — Both validations complete for doc_id='10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4' — running comment resolution
+2026-04-29 16:01:55,792 [INFO] app.services.trello_state — Marked doc_id='10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4' as handed_off
+2026-04-29 16:01:55,792 [INFO] app.services.trello_client — PUT https://api.trello.com/1/cards/69f0ad3f07163694906a201e
+2026-04-29 16:01:56,743 [INFO] app.services.trello_client — Moved card '69f0ad3f07163694906a201e' to list 'Translating'
+2026-04-29 16:01:56,743 [INFO] app.services.trello_client — POST https://api.trello.com/1/cards/69f0ad3f07163694906a201e/actions/comments
+2026-04-29 16:01:57,587 [INFO] app.services.trello_client — Added comment to card '69f0ad3f07163694906a201e'
+2026-04-29 16:02:03,217 [INFO] app.services.comment_resolution — Found 3 unresolved comment(s) for doc_id='10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4'
+
+--- Comment 1: AAAB5BTkn4s (FAILED — text not found) ---
+2026-04-29 16:02:12,099 [INFO] googleapiclient.discovery_cache — file_cache is only supported with oauth2client<4.0.0
+2026-04-29 16:02:14,982 [WARNING] app.services.docs_client — Text not found in document: 'The Harley-Davidson VRSC V-Rod is unlike anything else in the Milwaukee catalog.'
+2026-04-29 16:02:14,983 [WARNING] app.services.comment_resolution — apply_text_replacement returned False for comment 'AAAB5BTkn4s'
+
+KEY FINDING: The anchor_text returned by claude -p was:
+  'The Harley-Davidson VRSC V-Rod is unlike anything else in the Milwaukee catalog.'
+This string was NOT found in the document. The paragraph was NOT changed by a prior edit
+(user confirmed). This is an anchor_text mismatch — claude -p returned a subtly different
+version of the text than what is literally in the doc (likely whitespace, punctuation, or
+paraphrasing divergence). This is the multi-sentence anchor failure to diagnose next session.
+
+--- Comment 2: AAAB5BTkn4o (SUCCESS) ---
+2026-04-29 16:02:22,982 [INFO] googleapiclient.discovery_cache — file_cache is only supported with oauth2client<4.0.0
+2026-04-29 16:02:26,424 [INFO] app.services.docs_client — Replaced 'This engine is found on 2008 and later m' → 'This engine is for 2008 and later models' at index 9127 in doc '10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4'
+2026-04-29 16:02:26,532 [INFO] googleapiclient.discovery_cache — file_cache is only supported with oauth2client<4.0.0
+2026-04-29 16:02:28,915 [INFO] app.services.docs_client — Resolved comment 'AAAB5BTkn4o' on doc '10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4'
+2026-04-29 16:02:28,916 [INFO] app.services.comment_resolution — Comment 'AAAB5BTkn4o' applied (confidence='high')
+
+--- Comment 3: AAAB5BQHkpo (FAILED — text not found, expected) ---
+2026-04-29 16:02:37,042 [INFO] googleapiclient.discovery_cache — file_cache is only supported with oauth2client<4.0.0
+2026-04-29 16:02:39,578 [WARNING] app.services.docs_client — Text not found in document: 'A used Harley V-Rod usually sells for about €10,500. Prices range from about €5,'
+2026-04-29 16:02:39,580 [WARNING] app.services.comment_resolution — apply_text_replacement returned False for comment 'AAAB5BQHkpo'
+
+NOTE: This failure is expected. This comment's anchor text was already replaced during
+Run 1 (2026-04-29 ~15:19) before the Drive-resolve bug was discovered. The original text
+no longer exists in the doc. Needs manual resolution in Drive UI.
+
+--- Post-resolution: Translation triggered ---
+2026-04-29 16:02:39,580 [INFO] app.services.trello_client — POST https://api.trello.com/1/cards/69f0ad3f07163694906a201e/actions/comments
+2026-04-29 16:02:40,008 [INFO] app.services.trello_client — Added comment to card '69f0ad3f07163694906a201e'
+Error: Translation guidelines file not found: /Users/mac/Documents/SEO Agent Workflow/config/translation_guidelines.md
+Create config/translation_guidelines.md before running translations.
+Validating access to doc '10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4'...
+✓ Doc found: "Harley-Davidson VRSC V-Rod: Complete Buyer's and Owner's Guide"
+Fetching English blog from Drive...
+  Title : 'Untitled'
+  Slug  : untitled
+Loading translation guidelines...
+2026-04-29 16:02:45,716 [WARNING] __main__ — translation_workflow.py exited with code 1 for doc_id='10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4'
+
+--- Summary ---
+No Drive-resolve failures this time (fix confirmed working).
+Card NOT rolled back. Final DB status: handed_off.
+Card location: Translating list.
+Translation exited code 1: missing config/translation_guidelines.md (separate blocker).
