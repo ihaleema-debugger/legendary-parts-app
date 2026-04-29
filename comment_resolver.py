@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-"""Stage 9 — Comment Resolution CLI.
+"""Stage 9 — Comment Resolution CLI (standalone entry point).
 
-Called by trello_gate.py after both Trello checklist items are ticked,
-before translation_workflow.py is invoked.
+The Trello poller calls resolve_all_comments() directly; this script is for manual use.
 
 Usage:
     python comment_resolver.py --resume <doc_id>
 
 Exit codes:
-    0 — all comments resolved (or there were none); translation may proceed
-    1 — one or more comments could not be auto-resolved; translation is paused
+    0 — resolution complete (or no comments found)
+    1 — fatal error (initial fetch failed or unexpected exception)
 """
 from __future__ import annotations
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -28,7 +26,7 @@ sys.path.insert(0, str(_ROOT))
 
 from app.services.trello_client import TrelloClient
 from app.services.trello_state import TrelloState
-from app.services.comment_resolver_service import resolve_comments, build_trello_summary
+from app.services.comment_resolution import resolve_all_comments, format_stage9_summary
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,39 +34,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_INCOMPLETE_MSG = (
-    "Comment resolution incomplete: {n} comment(s) could not be auto-resolved. "
-    "Translation paused. Resolve manually in the doc and tick the "
-    "'Validated by Jeremy' box again to retry."
-)
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Stage 9: resolve Google Doc comments before translation"
+        description="Stage 9: resolve Google Doc comments via Claude Code (claude -p)"
     )
-    parser.add_argument(
-        "--resume",
-        metavar="DOC_ID",
-        required=True,
-        help="Google Doc ID to process",
-    )
+    parser.add_argument("--resume", metavar="DOC_ID", required=True,
+                        help="Google Doc ID to process")
     args = parser.parse_args()
 
     doc_id = args.resume
-    model = os.environ.get("COMMENT_RESOLVER_MODEL", "claude-sonnet-4-5")
 
     state = TrelloState()
     row = state.get_by_doc_id(doc_id)
     if row is None:
-        print(
-            f"Error: no Trello record found for doc_id={doc_id!r}. "
-            "Was this doc registered via trello_gate.py register?"
-        )
+        print(f"Error: no Trello record for doc_id={doc_id!r}. "
+              "Register via trello_gate.py register first.")
         sys.exit(1)
 
     card_id = row["card_id"]
-
     client = TrelloClient()
     try:
         client.resolve_list_ids()
@@ -77,32 +61,19 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        direct, interpretive, skipped = resolve_comments(doc_id, state, model)
+        summary = resolve_all_comments(doc_id)
     except Exception as e:
-        logger.error("Fatal error during comment resolution for doc_id=%r: %s", doc_id, e)
-        _try_post(
-            client,
-            card_id,
-            f"❌ Comment resolution failed with an unexpected error: {e}\n"
-            "Translation paused. Check logs and resolve the issue manually.",
-        )
+        logger.error("Fatal error for doc_id=%r: %s", doc_id, e)
+        _try_post(client, card_id,
+                  f"Comment resolution failed with an unexpected error: {e}\n"
+                  "Check logs and resolve manually.")
         sys.exit(1)
 
-    if not direct and not interpretive and not skipped:
-        logger.info("No comments to resolve for doc_id=%r — proceeding to translation", doc_id)
-        sys.exit(0)
-
-    if skipped:
-        summary = _INCOMPLETE_MSG.format(n=len(skipped))
-        print(summary)
-        _try_post(client, card_id, summary)
-        sys.exit(1)
-
-    summary = build_trello_summary(direct, interpretive, 0)
-    _try_post(client, card_id, summary)
+    _try_post(client, card_id, format_stage9_summary(summary))
     logger.info(
-        "Comment resolution complete for doc_id=%r: %d direct, %d interpretive",
-        doc_id, len(direct), len(interpretive),
+        "Done for doc_id=%r: %d applied, %d flagged, %d failed",
+        doc_id, len(summary["applied"]), len(summary["flagged_low_confidence"]),
+        len(summary["failed"]),
     )
     sys.exit(0)
 
