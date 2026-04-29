@@ -26,6 +26,11 @@ sys.path.insert(0, str(_ROOT))
 
 from app.services.trello_client import TrelloClient
 from app.services.trello_state import TrelloState
+from app.services.comment_resolution import (
+    resolve_all_comments,
+    format_stage9_summary,
+    DRIVE_RESOLVE_FAILURE_NOTE,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -158,33 +163,61 @@ def poll_once(state=None, client=None):
             print(f"\nBoth validations done for {row['blog_title']!r}.")
             print(f"Running comment resolution for doc_id={doc_id!r}...\n")
 
-            cr_result = _run_comment_resolver(doc_id)
-            if cr_result.returncode == 0:
-                print(f"Comment resolution complete. Starting translation for doc_id={doc_id!r}...\n")
-                _run_translation(doc_id)
-            else:
+            try:
+                summary = resolve_all_comments(doc_id)
+            except Exception as e:
                 logger.warning(
-                    "Comment resolution failed for doc_id=%r (exit %d) — resetting to pending",
-                    doc_id, cr_result.returncode,
+                    "Comment resolution fatal error for doc_id=%r: %s — resetting to pending",
+                    doc_id, e,
                 )
+                try:
+                    client.add_comment(
+                        card_id,
+                        f"❌ Comment resolution failed with an unexpected error: {e}\n"
+                        "Translation paused. Check logs.",
+                    )
+                except Exception:
+                    pass
                 state.reset_to_pending(doc_id)
+                continue
+
+            drive_resolve_failures = [
+                entry for entry in summary.get("failed", [])
+                if DRIVE_RESOLVE_FAILURE_NOTE in entry.get("note", "")
+            ]
+
+            if drive_resolve_failures:
+                # Edit was applied but Drive comment was not resolved. If we reset to pending
+                # and the next poll sees both boxes still ticked, it would run Stage 9 again
+                # and apply the same edit a second time. Untick first so the poller waits.
+                logger.warning(
+                    "Drive-resolve failure(s) for doc_id=%r — unticking checklist, "
+                    "resetting to pending",
+                    doc_id,
+                )
+                trello_msg = format_stage9_summary(summary, translation_triggered=False)
+                try:
+                    client.add_comment(card_id, trello_msg)
+                    client.uncheck_all_checklist_items(card_id)
+                    client.move_card_to_list(card_id, os.environ.get(
+                        "TRELLO_PENDING_LIST_NAME", "To Do"
+                    ))
+                except Exception as e:
+                    logger.warning("Could not update Trello after Drive-resolve failure: %s", e)
+                state.reset_to_pending(doc_id)
+                continue
+
+            trello_msg = format_stage9_summary(summary, translation_triggered=True)
+            try:
+                client.add_comment(card_id, trello_msg)
+            except Exception as e:
+                logger.warning("Could not post Stage 9 summary to Trello: %s", e)
+
+            print(f"Comment resolution complete. Starting translation for doc_id={doc_id!r}...\n")
+            _run_translation(doc_id)
         else:
             checked = sum([validated_1, validated_2])
             logger.info("Card %r: %d/2 validations complete — waiting", card_id, checked)
-
-
-def _run_comment_resolver(doc_id):
-    result = subprocess.run(
-        [sys.executable, "comment_resolver.py", "--resume", doc_id],
-        cwd=str(_ROOT),
-    )
-    if result.returncode != 0:
-        logger.warning(
-            "comment_resolver.py exited with code %d for doc_id=%r",
-            result.returncode,
-            doc_id,
-        )
-    return result
 
 
 def _run_translation(doc_id):
