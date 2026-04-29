@@ -10,4 +10,3 @@ python-dotenv==1.0.1
 google-api-python-client
 google-auth
 google-auth-httplib2
-anthropic>=0.40
