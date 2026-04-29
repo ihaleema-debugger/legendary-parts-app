@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude mcp:*)",
+      "Bash(python3 backlink_gap_workflow.py --my-domain legendary-parts.com --competitor partseurope.eu)"
+    ]
+  }
+}

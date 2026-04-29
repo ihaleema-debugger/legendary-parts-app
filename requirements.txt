@@ -1,0 +1,13 @@
+# Semrush Keyword Gap Scraper — project-level dependencies
+# Run: pip install -r requirements.txt
+# Then: playwright install chromium
+
+playwright==1.44.0
+pandas==2.2.2
+openpyxl==3.1.2
+requests==2.31.0
+python-dotenv==1.0.1
+google-api-python-client
+google-auth
+google-auth-httplib2
+anthropic>=0.40

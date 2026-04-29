@@ -1,0 +1,327 @@
+#!/usr/bin/env python3
+"""Trello validation gate CLI.
+
+Commands:
+  register <doc_id> <blog_title>   Create a Trello card for a newly uploaded blog
+  poll                             Check all pending cards; trigger translation if both validated
+  retry <doc_id>                   Re-create a failed card or force-check a pending one
+  status                           Show all tracked cards and their current state
+"""
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+_ROOT = Path(__file__).parent
+load_dotenv(_ROOT / ".env")
+
+import sys
+sys.path.insert(0, str(_ROOT))
+
+from app.services.trello_client import TrelloClient
+from app.services.trello_state import TrelloState
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+def _make_drive_url(doc_id):
+    return f"https://docs.google.com/document/d/{doc_id}/edit"
+
+
+def cmd_register(doc_id, blog_title):
+    """Create a Trello card for the blog and record it in the local DB."""
+    drive_url = _make_drive_url(doc_id)
+    state = TrelloState()
+
+    existing = state.get_by_doc_id(doc_id)
+    if existing and existing["status"] not in ("failed",):
+        print(
+            f"Warning: doc_id {doc_id!r} is already tracked "
+            f"(status={existing['status']!r}, card={existing['card_id']!r})."
+        )
+        print("Use 'retry' to re-create a failed card or force a handoff.")
+        return
+
+    try:
+        client = TrelloClient()
+        client.resolve_list_ids()
+        card_id = client.create_validation_card(blog_title, drive_url)
+    except Exception as e:
+        print(
+            f"Warning: Trello card creation failed for doc_id={doc_id!r} — {e}\n"
+            f"The blog is safely saved to Drive. Run 'python3 trello_gate.py retry {doc_id}' later."
+        )
+        logger.warning("Trello card creation failed for doc_id=%r: %s", doc_id, e)
+        return
+
+    if existing and existing["status"] == "failed":
+        state.update_card_id(doc_id, card_id)
+        state.reset_to_pending(doc_id)
+    else:
+        state.insert(doc_id, card_id, blog_title, drive_url)
+
+    print(f"Trello card created: {card_id}")
+    print(f"Doc: {drive_url}")
+    _ensure_poller_running()
+
+
+def _ensure_poller_running():
+    """Start trello_poller.py in the background if it isn't already running."""
+    try:
+        check = subprocess.run(["pgrep", "-f", "trello_poller.py"], capture_output=True)
+        if check.returncode == 0:
+            print("  (Poller already running — not starting a second instance.)")
+            logger.info("trello_poller.py already running; skipping auto-start")
+            return
+    except FileNotFoundError:
+        pass  # pgrep unavailable; proceed to start
+
+    poller = str(_ROOT / "trello_poller.py")
+    try:
+        subprocess.Popen(
+            [sys.executable, poller],
+            cwd=str(_ROOT),
+            start_new_session=True,   # detach from parent session so it survives terminal close
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print("  ✓ Trello poller started in the background.")
+        logger.info("Started trello_poller.py as background process")
+    except Exception as e:
+        print(f"  Warning: could not start poller automatically — {e}")
+        print(f"  Start it manually: python3 trello_poller.py")
+        logger.warning("Could not auto-start trello_poller.py: %s", e)
+
+
+def poll_once(state=None, client=None):
+    """Check all pending cards; trigger translation for any with both validations done."""
+    if state is None:
+        state = TrelloState()
+    if client is None:
+        client = TrelloClient()
+        client.resolve_list_ids()
+
+    pending = state.get_pending()
+    if not pending:
+        logger.info("poll_once: 0 pending cards")
+        return
+
+    logger.info("poll_once: %d pending card(s)", len(pending))
+
+    translating_list = os.environ.get("TRELLO_TRANSLATING_LIST_NAME", "Doing")
+    item_1 = os.environ.get("TRELLO_CHECKLIST_ITEM_1", "Validated by Haleema")
+    item_2 = os.environ.get("TRELLO_CHECKLIST_ITEM_2", "Validated by Jeremy")
+
+    for row in pending:
+        doc_id = row["doc_id"]
+        card_id = row["card_id"]
+        logger.info("Checking card %r (doc_id=%r)", card_id, doc_id)
+
+        try:
+            checklist_state = client.get_card_checklist_state(card_id)
+        except Exception as e:
+            logger.warning("Could not check card %r: %s — skipping", card_id, e)
+            continue
+
+        if checklist_state is None:
+            # Card was deleted from Trello
+            logger.warning("Card %r not found (deleted?); marking failed", card_id)
+            state.mark_failed(doc_id, "card deleted from Trello")
+            continue
+
+        validated_1 = checklist_state.get(item_1, False)
+        validated_2 = checklist_state.get(item_2, False)
+
+        if validated_1 and validated_2:
+            logger.info("Both validations complete for doc_id=%r — running comment resolution", doc_id)
+            state.mark_handed_off(doc_id)
+
+            try:
+                client.move_card_to_list(card_id, translating_list)
+                client.add_comment(
+                    card_id,
+                    "✅ Both validations complete. Reviewing comments…",
+                )
+            except Exception as e:
+                logger.warning("Trello update before comment resolution failed: %s", e)
+
+            print(f"\nBoth validations done for {row['blog_title']!r}.")
+            print(f"Running comment resolution for doc_id={doc_id!r}...\n")
+
+            cr_result = _run_comment_resolver(doc_id)
+            if cr_result.returncode == 0:
+                print(f"Comment resolution complete. Starting translation for doc_id={doc_id!r}...\n")
+                _run_translation(doc_id)
+            else:
+                logger.warning(
+                    "Comment resolution failed for doc_id=%r (exit %d) — resetting to pending",
+                    doc_id, cr_result.returncode,
+                )
+                state.reset_to_pending(doc_id)
+        else:
+            checked = sum([validated_1, validated_2])
+            logger.info("Card %r: %d/2 validations complete — waiting", card_id, checked)
+
+
+def _run_comment_resolver(doc_id):
+    result = subprocess.run(
+        [sys.executable, "comment_resolver.py", "--resume", doc_id],
+        cwd=str(_ROOT),
+    )
+    if result.returncode != 0:
+        logger.warning(
+            "comment_resolver.py exited with code %d for doc_id=%r",
+            result.returncode,
+            doc_id,
+        )
+    return result
+
+
+def _run_translation(doc_id):
+    result = subprocess.run(
+        [sys.executable, "translation_workflow.py", "--resume", doc_id],
+        cwd=str(_ROOT),
+    )
+    if result.returncode != 0:
+        logger.warning(
+            "translation_workflow.py exited with code %d for doc_id=%r",
+            result.returncode,
+            doc_id,
+        )
+
+
+def cmd_poll():
+    state = TrelloState()
+    client = TrelloClient()
+    try:
+        client.resolve_list_ids()
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    poll_once(state, client)
+
+
+def cmd_retry(doc_id):
+    state = TrelloState()
+    row = state.get_by_doc_id(doc_id)
+
+    if row is None:
+        # No record — attempt to create card now
+        print(f"No record found for doc_id={doc_id!r}.")
+        blog_title = input("Enter the blog title to create a card: ").strip()
+        if not blog_title:
+            print("Error: blog title is required.")
+            sys.exit(1)
+        cmd_register(doc_id, blog_title)
+        return
+
+    if row["status"] == "failed":
+        print(f"Retrying failed card for doc_id={doc_id!r}...")
+        cmd_register(doc_id, row["blog_title"])
+        return
+
+    if row["status"] == "pending":
+        # Re-check checklist right now and force handoff if both done
+        client = TrelloClient()
+        try:
+            client.resolve_list_ids()
+        except RuntimeError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+
+        checklist_state = client.get_card_checklist_state(row["card_id"])
+        item_1 = os.environ.get("TRELLO_CHECKLIST_ITEM_1", "Validated by Haleema")
+        item_2 = os.environ.get("TRELLO_CHECKLIST_ITEM_2", "Validated by Jeremy")
+
+        if checklist_state and checklist_state.get(item_1) and checklist_state.get(item_2):
+            print("Both validations are done. Forcing handoff now...")
+            poll_once(state, client)
+        else:
+            checked = sum([
+                bool(checklist_state.get(item_1)) if checklist_state else False,
+                bool(checklist_state.get(item_2)) if checklist_state else False,
+            ])
+            print(
+                f"Card {row['card_id']!r} has {checked}/2 validations complete. "
+                "Nothing to force yet."
+            )
+        return
+
+    print(
+        f"doc_id={doc_id!r} has status={row['status']!r}. "
+        "Only 'pending' and 'failed' cards can be retried."
+    )
+
+
+def cmd_status():
+    state = TrelloState()
+    rows = state.get_all()
+
+    if not rows:
+        print("No cards tracked yet.")
+        return
+
+    col_widths = [44, 30, 24, 11, 20]
+    header = (
+        f"{'doc_id':<{col_widths[0]}} "
+        f"{'blog_title':<{col_widths[1]}} "
+        f"{'card_id':<{col_widths[2]}} "
+        f"{'status':<{col_widths[3]}} "
+        f"{'created_at':<{col_widths[4]}}"
+    )
+    print(header)
+    print("-" * sum(col_widths + [4]))
+
+    for r in rows:
+        title = r["blog_title"][:28] + ".." if len(r["blog_title"]) > 30 else r["blog_title"]
+        created = r["created_at"][:19] if r["created_at"] else ""
+        print(
+            f"{r['doc_id']:<{col_widths[0]}} "
+            f"{title:<{col_widths[1]}} "
+            f"{r['card_id']:<{col_widths[2]}} "
+            f"{r['status']:<{col_widths[3]}} "
+            f"{created:<{col_widths[4]}}"
+        )
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Trello validation gate for the SEO-Forge translation pipeline"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    reg = sub.add_parser("register", help="Create a Trello card for an uploaded blog")
+    reg.add_argument("doc_id", help="Google Doc ID of the uploaded English blog")
+    reg.add_argument("blog_title", help="Title of the blog post")
+
+    sub.add_parser("poll", help="Check all pending cards and trigger translations if ready")
+
+    ret = sub.add_parser("retry", help="Retry a failed card or force-check a pending one")
+    ret.add_argument("doc_id", help="Google Doc ID to retry")
+
+    sub.add_parser("status", help="Show all tracked cards and their state")
+
+    args = parser.parse_args()
+
+    if args.command == "register":
+        cmd_register(args.doc_id, args.blog_title)
+    elif args.command == "poll":
+        cmd_poll()
+    elif args.command == "retry":
+        cmd_retry(args.doc_id)
+    elif args.command == "status":
+        cmd_status()
+
+
+if __name__ == "__main__":
+    main()

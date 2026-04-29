@@ -1,0 +1,20 @@
+# Secrets
+.env
+credentials.json
+token.json
+.session.json
+secrets/
+
+# Temporary processing files
+.tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# macOS
+.DS_Store
