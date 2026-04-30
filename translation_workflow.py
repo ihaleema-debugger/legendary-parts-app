@@ -11,9 +11,10 @@ The --resume flag is the primary entry point. It:
   2. Fetches the English blog from Drive
   3. Loads translation_guidelines.md (fails hard if missing/empty)
   4. Loads the product and blog URL lookup CSVs
-  5. Runs 8 parallel translation tasks (ThreadPoolExecutor)
+  5. Runs 8 translation tasks sequentially (FR→DE→ES→IT→NL→PL→SL→PT)
   6. Each task: translate → localize URLs → validate → save Google Doc
-  7. After all complete: sends email summary
+  7. Failed languages get one automatic retry before being reported
+  8. After all complete: sends email summary and updates Trello card
 """
 from __future__ import annotations
 
