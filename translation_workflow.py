@@ -79,7 +79,7 @@ def validate_doc(doc_id: str) -> None:
 
 def orchestrate(doc_id: str, dry_run: bool = False, single_lang: Optional[str] = None) -> None:
     """Run the full translation workflow for all 8 languages (or a single one in dry-run)."""
-    model = os.environ.get("TRANSLATION_MODEL", "claude-sonnet-4-5")
+    model = os.environ.get("TRANSLATION_MODEL", "claude-sonnet-4-6")
 
     # ── Preflight ─────────────────────────────────────────────────────────────
     print(f"\n{'DRY RUN — ' if dry_run else ''}Fetching English blog from Drive...")
@@ -102,9 +102,11 @@ def orchestrate(doc_id: str, dry_run: bool = False, single_lang: Optional[str] =
     print("Connecting to Shopify...")
     try:
         shopify_client = ShopifyMCPClient()
+        print("  ✓ Shopify client ready")
     except RuntimeError as e:
-        _die(str(e))
-    print("  ✓ Shopify client ready")
+        print(f"  Warning: Shopify unavailable — {e}")
+        print("  Internal links will be passed through unchanged.")
+        shopify_client = None
 
     print("Resolving target Drive folder...")
     folder_id = get_doc_parent_folder(doc_id) or os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
@@ -119,7 +121,7 @@ def orchestrate(doc_id: str, dry_run: bool = False, single_lang: Optional[str] =
     # ── Parallel task execution ───────────────────────────────────────────────
     results: list[dict] = []
 
-    with ThreadPoolExecutor(max_workers=len(langs_to_run)) as executor:
+    with ThreadPoolExecutor(max_workers=min(3, len(langs_to_run))) as executor:
         future_to_lang = {
             executor.submit(
                 _run_language_task,
@@ -194,7 +196,7 @@ def orchestrate(doc_id: str, dry_run: bool = False, single_lang: Optional[str] =
 
 
 def _update_trello_on_completion(doc_id: str, results: list) -> None:
-    """Move the Trello card to Done and post a comment with translation links."""
+    """Post a Trello comment with succeeded/failed language summary and conditionally move card."""
     from app.services.trello_state import TrelloState
     from app.services.trello_client import TrelloClient
 
@@ -205,28 +207,40 @@ def _update_trello_on_completion(doc_id: str, results: list) -> None:
 
     done_list = os.environ.get("TRELLO_DONE_LIST_NAME", "Done")
 
-    lang_names = {
-        "fr": "French", "de": "German", "es": "Spanish", "it": "Italian",
-        "nl": "Dutch", "pl": "Polish", "sl": "Slovenian", "pt": "Portuguese",
-    }
-    lines = ["**Translation complete.** Links to all docs:\n"]
-    for r in results:
-        lang = r.get("lang", "?")
-        name = lang_names.get(lang, lang.upper())
-        if r.get("status") == "success":
-            url = r.get("doc_url", "")
-            flag_count = len(r.get("flags", []))
-            lines.append(f"- ✅ {name}: [{url}]({url}) ({flag_count} flag(s))")
-        else:
-            lines.append(f"- ❌ {name}: {r.get('error', 'unknown error')}")
+    succeeded = [r["lang"] for r in results if r.get("status") == "success"]
+    failed = [r for r in results if r.get("status") != "success"]
+    n = len(succeeded)
+    total = len(results)
+
+    lines = [f"Translations complete: {n}/{total} succeeded\n"]
+
+    if succeeded:
+        lines.append(f"Succeeded: {', '.join(l.upper() for l in succeeded)}")
+
+    for r in failed:
+        err = r.get("error") or "unknown error"
+        if len(err) > 80:
+            err = err[:77] + "..."
+        lines.append(f"Failed: {r['lang'].upper()} ({err})")
+
+    if failed:
+        lines.append(f"\nRe-run failed languages with: /seo-forge --resume {doc_id} --lang <code>")
+
+    if n == 0:
+        lines.append("\nAll translations failed — check logs.")
+
     comment = "\n".join(lines)
 
     client = TrelloClient()
     client.resolve_list_ids()
     client.add_comment(row["card_id"], comment)
-    client.move_card_to_list(row["card_id"], done_list)
-    state.mark_completed(doc_id)
-    print(f"  ✓ Trello card moved to '{done_list}' with translation links")
+
+    if n > 0:
+        client.move_card_to_list(row["card_id"], done_list)
+        state.mark_completed(doc_id)
+        print(f"  ✓ Trello card moved to '{done_list}'")
+    else:
+        print("  ⚠ All translations failed — card left in Translating")
 
 
 def _run_language_task(
