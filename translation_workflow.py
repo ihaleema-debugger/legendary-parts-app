@@ -22,7 +22,6 @@ import os
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -45,8 +44,6 @@ from app.services import (
 )
 from app.services.shopify_mcp import ShopifyMCPClient
 from app.services.drive_reader import get_doc_parent_folder
-
-_TASK_TIMEOUT = 600  # 10 minutes per language
 
 LANGUAGES = {
     "fr": "French (France)",
@@ -118,13 +115,15 @@ def orchestrate(doc_id: str, dry_run: bool = False, single_lang: Optional[str] =
     langs_to_run = {single_lang: LANGUAGES[single_lang]} if single_lang else LANGUAGES
     print(f"\nStarting translation into {len(langs_to_run)} language(s) with model {model!r}...\n")
 
-    # ── Parallel task execution ───────────────────────────────────────────────
-    results: list[dict] = []
+    # ── Sequential task execution ─────────────────────────────────────────────
+    result_objects: list[dict] = []
+    succeeded: list[str] = []
+    failed: list[dict] = []  # {"lang": str, "error": str}
 
-    with ThreadPoolExecutor(max_workers=min(3, len(langs_to_run))) as executor:
-        future_to_lang = {
-            executor.submit(
-                _run_language_task,
+    for lang_code, lang_name in langs_to_run.items():
+        print(f"  → [{lang_code.upper()}] {lang_name}...")
+        try:
+            result = _run_language_task(
                 lang_code=lang_code,
                 lang_name=lang_name,
                 blog=blog,
@@ -135,41 +134,67 @@ def orchestrate(doc_id: str, dry_run: bool = False, single_lang: Optional[str] =
                 folder_id=folder_id,
                 model=model,
                 dry_run=dry_run,
-            ): lang_code
-            for lang_code, lang_name in langs_to_run.items()
-        }
+            )
+            result_objects.append(result)
+            if result["status"] == "success":
+                succeeded.append(lang_code)
+                flag_count = len(result.get("flags", []))
+                print(f"  ✓ [{lang_code.upper()}] {flag_count} flag(s) — {result.get('doc_url', '')}")
+            else:
+                failed.append({"lang": lang_code, "error": result.get("error", "unknown error")})
+                print(f"  ✗ [{lang_code.upper()}] FAILED: {result.get('error', '?')}")
+        except Exception as e:
+            err = str(e)
+            failed.append({"lang": lang_code, "error": err})
+            result_objects.append({
+                "lang": lang_code, "status": "failed",
+                "doc_id": None, "doc_url": None, "flags": [], "error": err,
+            })
+            print(f"  ✗ [{lang_code.upper()}] ERROR: {e}")
 
-        for future in as_completed(future_to_lang):
-            lang_code = future_to_lang[future]
+    # ── Retry pass (one attempt for each failed language) ─────────────────────
+    if failed:
+        retry_codes = [f["lang"] for f in failed]
+        print(f"\n  First pass complete. Retrying {len(failed)} failed language(s): {retry_codes}")
+        still_failed: list[dict] = []
+        for item in failed:
+            lang_code = item["lang"]
             lang_name = LANGUAGES[lang_code]
+            print(f"  → Retry [{lang_code.upper()}] {lang_name}...")
             try:
-                result = future.result(timeout=_TASK_TIMEOUT)
-                results.append(result)
+                result = _run_language_task(
+                    lang_code=lang_code,
+                    lang_name=lang_name,
+                    blog=blog,
+                    guidelines=guidelines,
+                    shopify_client=shopify_client,
+                    source_doc_id=doc_id,
+                    original_slug=original_slug,
+                    folder_id=folder_id,
+                    model=model,
+                    dry_run=dry_run,
+                )
+                result_objects = [r for r in result_objects if r.get("lang") != lang_code]
+                result_objects.append(result)
                 if result["status"] == "success":
+                    succeeded.append(lang_code)
                     flag_count = len(result.get("flags", []))
-                    print(f"  ✓ {lang_name} ({lang_code.upper()}) — {flag_count} flag(s) — {result.get('doc_url', '')}")
+                    print(f"  ✓ [{lang_code.upper()}] retry succeeded — {flag_count} flag(s)")
                 else:
-                    print(f"  ✗ {lang_name} ({lang_code.upper()}) — FAILED: {result.get('error', '?')}")
-            except FuturesTimeoutError:
-                results.append({
-                    "lang": lang_code,
-                    "status": "failed",
-                    "doc_id": None,
-                    "doc_url": None,
-                    "flags": [],
-                    "error": f"Task timed out after {_TASK_TIMEOUT}s",
-                })
-                print(f"  ✗ {lang_name} ({lang_code.upper()}) — TIMEOUT")
+                    still_failed.append({"lang": lang_code, "error": result.get("error", "unknown error")})
+                    print(f"  ✗ [{lang_code.upper()}] retry failed: {result.get('error', '?')}")
             except Exception as e:
-                results.append({
-                    "lang": lang_code,
-                    "status": "failed",
-                    "doc_id": None,
-                    "doc_url": None,
-                    "flags": [],
-                    "error": str(e),
+                err = str(e)
+                still_failed.append({"lang": lang_code, "error": err})
+                result_objects = [r for r in result_objects if r.get("lang") != lang_code]
+                result_objects.append({
+                    "lang": lang_code, "status": "failed",
+                    "doc_id": None, "doc_url": None, "flags": [], "error": err,
                 })
-                print(f"  ✗ {lang_name} ({lang_code.upper()}) — ERROR: {e}")
+                print(f"  ✗ [{lang_code.upper()}] retry error: {e}")
+        failed = still_failed
+
+    results = result_objects  # alias used by summary/email/Trello below
 
     # ── Summary ───────────────────────────────────────────────────────────────
     successes = sum(1 for r in results if r["status"] == "success")
