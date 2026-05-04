@@ -98,10 +98,22 @@ def apply_text_replacement(
 
     occurrences = _find_text_occurrences(doc_content, original_text)
     if not occurrences:
-        logger.warning("Text not found in document: %r", original_text[:80])
-        return False
-
-    if len(occurrences) == 1:
+        flat_text, offset_map = _build_flat_text(doc_content)
+        flat_idx = flat_text.find(original_text)
+        if flat_idx == -1:
+            # Layer 1: normalize whitespace/quotes/dashes and retry on flat text
+            from app.services import anchor_matcher
+            span = anchor_matcher.find_span(flat_text, original_text)
+            if span is None:
+                logger.warning("Text not found in document: %r", original_text[:80])
+                return False
+            flat_idx, flat_end_idx = span
+            start_idx = offset_map[flat_idx]
+            end_idx = offset_map[flat_end_idx - 1] + 1
+        else:
+            start_idx = offset_map[flat_idx]
+            end_idx = offset_map[flat_idx + len(original_text) - 1] + 1
+    elif len(occurrences) == 1:
         start_idx, end_idx = occurrences[0]
     else:
         anchor_start = _parse_anchor_start(anchor_str)
@@ -193,6 +205,30 @@ def _find_text_occurrences(doc_content: list, text: str) -> list:
                 occurrences.append((run_start + idx, run_start + idx + len(text)))
                 search_from = idx + 1
     return occurrences
+
+
+def _build_flat_text(doc_content: list) -> tuple:
+    """Reconstruct document as a flat string with Docs API index mapping.
+
+    Returns (flat_text, offset_map) where offset_map[i] is the Docs API
+    startIndex for flat_text[i]. Enables cross-run and cross-paragraph matching.
+    """
+    parts: list = []
+    offset_map: list = []
+    for element in doc_content:
+        paragraph = element.get("paragraph")
+        if not paragraph:
+            continue
+        for elem in paragraph.get("elements", []):
+            text_run = elem.get("textRun")
+            if not text_run:
+                continue
+            content = text_run.get("content", "")
+            run_start = elem.get("startIndex", 0)
+            parts.append(content)
+            for i in range(len(content)):
+                offset_map.append(run_start + i)
+    return "".join(parts), offset_map
 
 
 def _parse_anchor_start(anchor_str: str) -> Optional[int]:
