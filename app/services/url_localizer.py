@@ -51,6 +51,9 @@ def _process_link(
     if _LEGENDARY_HOST not in url:
         return match.group(0)  # external — pass through
 
+    if shopify_client is None:
+        return match.group(0)  # Shopify unavailable — pass through unchanged
+
     oem = _extract_oem(url)
     if oem:
         return _resolve_product(url, anchor, oem, lang_code, shopify_client, inline_flags)
