@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, call, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.docs_client import resolve_comment, _build_flat_text, apply_text_replacement
+from app.services.docs_client import resolve_comment, _build_flat_text, apply_text_replacement, write_structured_doc
 
 
 class TestResolveComment(unittest.TestCase):
@@ -263,6 +263,138 @@ class TestVRodComment1Regression(unittest.TestCase):
             None
         )
         self.assertIsNotNone(replace_req, "batchUpdate must include a replace/delete request")
+
+
+class TestWriteStructuredDoc(unittest.TestCase):
+    """Unit tests for write_structured_doc — all Google API calls are mocked."""
+
+    def _make_docs_service(self, end_index=10):
+        """Return a mock Docs service whose get() returns a doc with the given end_index."""
+        docs = MagicMock()
+        docs.documents().get().execute.return_value = {
+            "body": {
+                "content": [{"endIndex": end_index}]
+            }
+        }
+        docs.documents().batchUpdate().execute.return_value = {}
+        return docs
+
+    @patch("app.services.docs_client._get_docs_service")
+    def test_raises_on_empty_blocks(self, mock_get_docs):
+        """write_structured_doc must raise ValueError when blocks is empty."""
+        mock_get_docs.return_value = self._make_docs_service()
+        with self.assertRaises(ValueError):
+            write_structured_doc("DOC1", [])
+
+    @patch("app.services.docs_client._get_docs_service")
+    def test_delete_content_range_included_when_doc_has_content(self, mock_get_docs):
+        """deleteContentRange must be included when end_index > 2."""
+        docs = self._make_docs_service(end_index=50)
+        mock_get_docs.return_value = docs
+
+        write_structured_doc("DOC1", [{"level": "p", "text": "Hello"}])
+
+        call_args = docs.documents().batchUpdate.call_args
+        requests = call_args[1].get("body", {}).get("requests", [])
+        delete_reqs = [r for r in requests if "deleteContentRange" in r]
+        self.assertEqual(len(delete_reqs), 1)
+        self.assertEqual(delete_reqs[0]["deleteContentRange"]["range"]["startIndex"], 1)
+        self.assertEqual(delete_reqs[0]["deleteContentRange"]["range"]["endIndex"], 49)
+
+    @patch("app.services.docs_client._get_docs_service")
+    def test_no_delete_when_doc_is_empty(self, mock_get_docs):
+        """deleteContentRange must be omitted when end_index <= 2."""
+        docs = self._make_docs_service(end_index=2)
+        mock_get_docs.return_value = docs
+
+        write_structured_doc("DOC1", [{"level": "p", "text": "Hello"}])
+
+        call_args = docs.documents().batchUpdate.call_args
+        requests = call_args[1].get("body", {}).get("requests", [])
+        delete_reqs = [r for r in requests if "deleteContentRange" in r]
+        self.assertEqual(len(delete_reqs), 0)
+
+    @patch("app.services.docs_client._get_docs_service")
+    def test_insert_text_appends_newline(self, mock_get_docs):
+        """Each non-empty block must be inserted with a trailing newline."""
+        docs = self._make_docs_service(end_index=2)
+        mock_get_docs.return_value = docs
+
+        write_structured_doc("DOC1", [{"level": "p", "text": "My paragraph"}])
+
+        call_args = docs.documents().batchUpdate.call_args
+        requests = call_args[1].get("body", {}).get("requests", [])
+        insert_reqs = [r for r in requests if "insertText" in r]
+        self.assertEqual(len(insert_reqs), 1)
+        self.assertEqual(insert_reqs[0]["insertText"]["text"], "My paragraph\n")
+
+    @patch("app.services.docs_client._get_docs_service")
+    def test_empty_text_blocks_are_skipped(self, mock_get_docs):
+        """Blocks with empty text must be skipped silently."""
+        docs = self._make_docs_service(end_index=2)
+        mock_get_docs.return_value = docs
+
+        write_structured_doc("DOC1", [
+            {"level": "h1", "text": ""},
+            {"level": "p", "text": "Real content"},
+        ])
+
+        call_args = docs.documents().batchUpdate.call_args
+        requests = call_args[1].get("body", {}).get("requests", [])
+        insert_reqs = [r for r in requests if "insertText" in r]
+        self.assertEqual(len(insert_reqs), 1)
+        self.assertEqual(insert_reqs[0]["insertText"]["text"], "Real content\n")
+
+    @patch("app.services.docs_client._get_docs_service")
+    def test_heading_block_gets_update_paragraph_style(self, mock_get_docs):
+        """Non-'p' blocks must generate an updateParagraphStyle request with correct style."""
+        docs = self._make_docs_service(end_index=2)
+        mock_get_docs.return_value = docs
+
+        write_structured_doc("DOC1", [{"level": "h2", "text": "Section Title"}])
+
+        call_args = docs.documents().batchUpdate.call_args
+        requests = call_args[1].get("body", {}).get("requests", [])
+        style_reqs = [r for r in requests if "updateParagraphStyle" in r]
+        self.assertEqual(len(style_reqs), 1)
+        named_style = style_reqs[0]["updateParagraphStyle"]["paragraphStyle"]["namedStyleType"]
+        self.assertEqual(named_style, "HEADING_2")
+
+    @patch("app.services.docs_client._get_docs_service")
+    def test_paragraph_block_gets_no_update_paragraph_style(self, mock_get_docs):
+        """'p' level blocks must NOT generate any updateParagraphStyle request."""
+        docs = self._make_docs_service(end_index=2)
+        mock_get_docs.return_value = docs
+
+        write_structured_doc("DOC1", [{"level": "p", "text": "Just a paragraph"}])
+
+        call_args = docs.documents().batchUpdate.call_args
+        requests = call_args[1].get("body", {}).get("requests", [])
+        style_reqs = [r for r in requests if "updateParagraphStyle" in r]
+        self.assertEqual(len(style_reqs), 0)
+
+    @patch("app.services.docs_client._get_docs_service")
+    def test_link_generates_update_text_style(self, mock_get_docs):
+        """A link whose anchor is found in the block text must produce an updateTextStyle request."""
+        docs = self._make_docs_service(end_index=2)
+        mock_get_docs.return_value = docs
+
+        blocks = [{
+            "level": "p",
+            "text": "Click here for more info",
+            "links": [{"anchor": "here", "url": "https://example.com"}],
+        }]
+        write_structured_doc("DOC1", blocks)
+
+        call_args = docs.documents().batchUpdate.call_args
+        requests = call_args[1].get("body", {}).get("requests", [])
+        link_reqs = [r for r in requests if "updateTextStyle" in r]
+        self.assertEqual(len(link_reqs), 1)
+        link_req = link_reqs[0]["updateTextStyle"]
+        self.assertEqual(link_req["textStyle"]["link"]["url"], "https://example.com")
+        # "here" starts at index 6 in "Click here for more info" (block starts at index 1)
+        self.assertEqual(link_req["range"]["startIndex"], 7)
+        self.assertEqual(link_req["range"]["endIndex"], 11)
 
 
 if __name__ == "__main__":
