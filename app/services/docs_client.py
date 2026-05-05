@@ -3,6 +3,7 @@
 Provides:
   - get_unresolved_comments()    — Drive v3 comments.list
   - apply_text_replacement()     — Docs v1 batchUpdate (deleteContentRange + insertText)
+  - replace_body()               — Docs v1 batchUpdate (atomic delete-all + insertText)
   - resolve_comment()            — Drive v3 comments.update resolved=True
 """
 from __future__ import annotations
@@ -143,6 +144,147 @@ def apply_text_replacement(
         original_text[:40], revised_text[:40], start_idx, doc_id,
     )
     return True
+
+
+def replace_body(doc_id: str, new_text: str) -> int:
+    """Replace the entire body of a Google Doc with new_text.
+
+    Fetches the current body to determine the end index, then issues a single
+    atomic batchUpdate: deleteContentRange(1, end-1) + insertText(1, new_text).
+    Returns the end index that was deleted (useful for logging).
+    """
+    docs = _get_docs_service()
+
+    doc = docs.documents().get(documentId=doc_id).execute()
+    content = doc.get("body", {}).get("content", [])
+    end_index = content[-1].get("endIndex", 2) if content else 2
+
+    docs.documents().batchUpdate(
+        documentId=doc_id,
+        body={"requests": [
+            {"deleteContentRange": {"range": {"startIndex": 1, "endIndex": end_index - 1}}},
+            {"insertText": {"location": {"index": 1}, "text": new_text}},
+        ]},
+    ).execute()
+    logger.info("Replaced body of doc %r (deleted up to index %d)", doc_id, end_index - 1)
+    return end_index - 1
+
+
+_STYLE_MAP = {
+    "title": "TITLE",
+    "h1": "HEADING_1",
+    "h2": "HEADING_2",
+    "h3": "HEADING_3",
+    "h4": "HEADING_4",
+    "p": "NORMAL_TEXT",
+}
+
+
+def write_structured_doc(doc_id: str, blocks: list) -> None:
+    """Write structured content to a Google Doc, applying heading and paragraph styles.
+
+    blocks is a list of dicts with required key ``level`` ("title", "h1"–"h4", "p")
+    and ``text`` (str). Optional key ``links`` is a list of
+    {anchor: str, url: str} dicts for inline hyperlinks.
+
+    Issues a single atomic batchUpdate:
+      1. deleteContentRange clearing existing body
+      2. insertText for each non-empty block (tracks running index)
+      3. updateParagraphStyle for each heading/title block
+      4. updateTextStyle for each link whose anchor is found in its block
+
+    Raises ValueError if blocks is empty.
+    Skips blocks with empty text silently.
+    Logs a warning (does not raise) if a link anchor is not found in its block.
+    """
+    if not blocks:
+        raise ValueError("blocks must not be empty")
+
+    docs = _get_docs_service()
+
+    doc = docs.documents().get(documentId=doc_id).execute()
+    content = doc.get("body", {}).get("content", [])
+    end_index = content[-1].get("endIndex", 2) if content else 2
+
+    requests: list = []
+
+    # Step 1 — clear existing content (skip if doc is already empty)
+    if end_index > 2:
+        requests.append({
+            "deleteContentRange": {
+                "range": {"startIndex": 1, "endIndex": end_index - 1},
+            }
+        })
+
+    # Step 2 — insert all blocks, tracking indices
+    running_index = 1
+    block_data: list = []  # (start, para_end, level, text, links)
+
+    for block in blocks:
+        level = block.get("level", "p")
+        text = block.get("text", "")
+        links = block.get("links", [])
+
+        if not text:
+            continue
+
+        text_with_newline = text + "\n"
+        start = running_index
+        para_end = running_index + len(text_with_newline)
+
+        requests.append({
+            "insertText": {
+                "location": {"index": running_index},
+                "text": text_with_newline,
+            }
+        })
+
+        block_data.append((start, para_end, level, text, links))
+        running_index = para_end
+
+    # Step 3 — apply paragraph styles (heading/title blocks only)
+    for start, para_end, level, _text, _links in block_data:
+        if level == "p":
+            continue
+        requests.append({
+            "updateParagraphStyle": {
+                "range": {"startIndex": start, "endIndex": para_end},
+                "paragraphStyle": {
+                    "namedStyleType": _STYLE_MAP.get(level, "NORMAL_TEXT"),
+                },
+                "fields": "namedStyleType",
+            }
+        })
+
+    # Step 4 — apply link styles
+    for start, _para_end, _level, text, links in block_data:
+        for link_dict in links:
+            anchor = link_dict.get("anchor", "")
+            url = link_dict.get("url", "")
+            if not anchor or not url:
+                continue
+            idx = text.find(anchor)
+            if idx == -1:
+                logger.warning(
+                    "Link anchor %r not found in block text, skipping", anchor[:40]
+                )
+                continue
+            requests.append({
+                "updateTextStyle": {
+                    "range": {
+                        "startIndex": start + idx,
+                        "endIndex": start + idx + len(anchor),
+                    },
+                    "textStyle": {"link": {"url": url}},
+                    "fields": "link",
+                }
+            })
+
+    docs.documents().batchUpdate(
+        documentId=doc_id,
+        body={"requests": requests},
+    ).execute()
+    logger.info("Wrote %d blocks to doc %r", len(block_data), doc_id)
 
 
 def resolve_comment(doc_id: str, comment_id: str) -> None:
