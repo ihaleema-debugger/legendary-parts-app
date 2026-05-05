@@ -65,6 +65,33 @@ def upload_json_to_drive(filename: str, data: dict, folder_id: Optional[str] = N
         raise RuntimeError(f"Drive JSON upload failed: {e}") from e
 
 
+def create_doc(title: str, folder_id: Optional[str] = None) -> dict:
+    """Create an empty Google Doc with the given title. Returns file metadata dict.
+
+    Returns dict with keys: id, name, webViewLink.
+    Raises RuntimeError on Drive API error.
+    """
+    service = _get_service()
+    folder_id = folder_id or os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
+
+    file_metadata: dict = {
+        "name": title,
+        "mimeType": "application/vnd.google-apps.document",
+    }
+    if folder_id:
+        file_metadata["parents"] = [folder_id]
+
+    try:
+        file = service.files().create(
+            body=file_metadata,
+            fields="id, name, webViewLink",
+            supportsAllDrives=True,
+        ).execute()
+        return file
+    except HttpError as e:
+        raise RuntimeError(f"Drive doc creation failed: {e}") from e
+
+
 def upload_blog_to_drive(title: str, content: str, folder_id: Optional[str] = None) -> dict:
     """Upload text content as a Google Doc. Returns the created file metadata."""
     service = _get_service()
