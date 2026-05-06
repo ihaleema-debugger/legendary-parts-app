@@ -153,7 +153,7 @@ Once the user picks cluster N:
    - Brief from step 2
    - `keyword_forge/guideline.md` as the style guide
    
-   Save blog to `clusters/cluster_NN_<name>/blog.md`. Save FAQ schema JSON-LD to `clusters/cluster_NN_<name>/faq_schema.html`.
+   Save the full JSON output from seo-blog-writer to `clusters/cluster_NN_<name>/blog_blocks.json`. The `faq_schema` key in that JSON replaces the separate `faq_schema.html` file.
 
 4. **Update status** — in `03_clusters.json`, set the chosen cluster's `status` to `"used"` and add `"used_at"` ISO timestamp.
 
@@ -161,7 +161,7 @@ Once the user picks cluster N:
 
 ```
 ✅ Blog written for cluster N: "<cluster name>"
-📄 ~/Desktop/seo-forge/<run_id>/clusters/cluster_NN_<name>/blog.md
+📄 ~/Desktop/seo-forge/<run_id>/clusters/cluster_NN_<name>/blog_blocks.json
 
 Publishing to Drive and Trello now...
 ```
@@ -172,19 +172,19 @@ Do not stop here. Proceed to Stage 8 without asking the user.
 
 **This stage runs automatically every time a blog is written. Never skip it. Never ask the user if they want to publish. Just do it.**
 
-Extract the H1 title from `blog.md` (first line beginning with `# `). Then run from the project root (`/Users/mac/Documents/SEO Agent Workflow/`):
+Run from the project root (`/Users/mac/Documents/SEO Agent Workflow/`). Title is extracted automatically from the first `{"level": "title"}` block in `blog_blocks.json`.
 
 **A8b — Upload to Google Drive:**
 ```bash
 cd "/Users/mac/Documents/SEO Agent Workflow" && python tools/publish_blog.py \
-  --blog-path "~/Desktop/seo-forge/<run_id>/clusters/cluster_NN_<name>/blog.md" \
-  --title "<H1 title extracted from blog.md>"
+  --blocks-path "~/Desktop/seo-forge/<run_id>/clusters/cluster_NN_<name>/blog_blocks.json"
 ```
 
 The script:
-1. Reads `blog.md`
-2. Uploads it to the Shared Drive folder (`GOOGLE_DRIVE_FOLDER_ID`) as a Google Doc using the service account (`GOOGLE_SERVICE_ACCOUNT_PATH`) with `supportsAllDrives=True`
-3. Prints the Drive URL and Doc ID
+1. Reads `blog_blocks.json` and extracts the title from the first `{"level": "title"}` block
+2. Creates an empty Google Doc via Drive API
+3. Writes structured content (headings + links) via Docs API batchUpdate
+4. Prints the Drive URL and Doc ID
 
 **A8c — Create Trello validation card:**
 The same script calls `trello_gate.cmd_register(doc_id, title)` automatically, which:
@@ -192,7 +192,7 @@ The same script calls `trello_gate.cmd_register(doc_id, title)` automatically, w
 - Adds a "Validations" checklist with "Validated by Haleema" and "Validated by Jeremy" items
 - Auto-starts `trello_poller.py` in the background (skips if already running)
 
-**If the script fails:** stop and report the exact error. Do not silently skip. The blog is always saved locally at `blog.md` regardless — it is never lost. The user can re-run Stage 8 manually: `python tools/publish_blog.py --blog-path <path> --title "<title>"`.
+**If the script fails:** stop and report the exact error. Do not silently skip. The blog is always saved locally at `blog_blocks.json` regardless — it is never lost. The user can re-run Stage 8 manually: `python tools/publish_blog.py --blocks-path <path>`.
 
 After Stage 8 completes, give the final report:
 ```
@@ -269,7 +269,7 @@ If zero unused clusters remain, tell the user the run is exhausted and suggest s
 
 ### Stage B3 — Generate LSIs + brief + blog
 
-Same as Mode A Stage 6. Check for an existing `blog.md` first — if one exists, warn the user and ask for confirmation before overwriting.
+Same as Mode A Stage 6. Check for an existing `blog_blocks.json` first — if one exists, warn the user and ask for confirmation before overwriting.
 
 ### Stage B4 — Report (interim — Stage B5 follows immediately)
 
@@ -277,12 +277,11 @@ Same interim report as Mode A Stage 7. Do not stop here. Proceed to Stage B5 wit
 
 ### Stage B5 — Publish to Drive + Trello (automatic, non-optional)
 
-Identical to Mode A Stage 8. Extract the H1 title from `blog.md`, then run:
+Identical to Mode A Stage 8. Run:
 
 ```bash
 cd "/Users/mac/Documents/SEO Agent Workflow" && python tools/publish_blog.py \
-  --blog-path "~/Desktop/seo-forge/<run_id>/clusters/cluster_NN_<name>/blog.md" \
-  --title "<H1 title extracted from blog.md>"
+  --blocks-path "~/Desktop/seo-forge/<run_id>/clusters/cluster_NN_<name>/blog_blocks.json"
 ```
 
 Same Drive upload, Trello card creation, failure handling, and final report format as Stage 8.
@@ -431,14 +430,13 @@ Tell the user:
         │   ├── keywords.csv
         │   ├── lsis.md               # only if cluster has been used
         │   ├── brief.md              # only if cluster has been used
-        │   ├── blog.md               # only if cluster has been used
-        │   └── faq_schema.html       # only if cluster has been used
+        │   └── blog_blocks.json      # only if cluster has been used (faq_schema is inside)
         ├── cluster_02_crash-bars/
         │   └── keywords.csv          # unused — keywords only
         └── ...
 ```
 
-`blog.md` presence is a secondary signal of "used" status. `03_clusters.json` is the source of truth.
+`blog_blocks.json` presence is a secondary signal of "used" status. `03_clusters.json` is the source of truth.
 
 ---
 
