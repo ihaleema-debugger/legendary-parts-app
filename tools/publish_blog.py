@@ -38,6 +38,7 @@ load_dotenv(ROOT / ".env")
 
 from app.services.drive_uploader import create_doc
 from app.services.docs_client import write_structured_doc
+from app.services.word_count_validator import validate_word_count, WordCountExceededException
 import trello_gate
 
 
@@ -97,6 +98,13 @@ def main() -> None:
         _validate_blocks(blocks)
         title = _extract_title(blocks)
     except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Word count validation — trims if over HARD_CEILING, raises if unresolvable
+    try:
+        blocks = validate_word_count(blocks)
+    except WordCountExceededException as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
