@@ -127,3 +127,79 @@ COMMENT_RESOLVER_MODEL=claude-sonnet-4-5   # optional, this is the default
 ```bash
 python3 comment_resolver.py --resume <doc_id>
 ```
+
+---
+
+## V-Rod Translation Run — Status Log
+
+### 2026-05-07 — All 8 languages complete
+
+**Doc:** Harley-Davidson VRSC V-Rod: Complete Buyer's and Owner's Guide
+**Doc ID:** `10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4`
+
+| Lang | Status | Expansion | Flags | Drive Doc ID |
+|------|--------|-----------|-------|--------------|
+| FR | ✓ complete (prior session) | — | — | (spot-checked) |
+| DE | ✓ complete (prior session) | — | — | (spot-checked) |
+| ES | ✓ complete (prior session) | — | — | (spot-checked) |
+| IT | ✓ complete (prior session) | — | — | (spot-checked) |
+| PL | ✓ complete 2026-05-07 | +36% ⚠ | 14 | `10fRTJC6TwulqThJhnM73ZN_TXLs7L2R-R2UFnOnbkEw` |
+| SL | ✓ complete 2026-05-07 | +38% ⚠ | 18 | `11fDYFBiaI0xBlCD9a2yv4s4pFkci13lxmlGD0FUKHZM` |
+| NL | ✓ complete 2026-05-07 | +3% ✓ | 14 | `1nlJNbNDlXT8cfovfKOUqzeGG2Jlhndht1OEwCqm8BQY` |
+| PT | ✓ complete 2026-05-07 | +55% ⚠ | 13 | `1U_jNeifao6bq9x3yWWjfjNirKtuxNORxPCpDrfnT5_8` |
+
+Word count expansion is measured in alpha tokens vs English source (~1,075). Slavic/Romance languages expand due to morphology — the ±15% rule added to guidelines (Section 13) will constrain future runs.
+
+---
+
+### Known bugs in the translation write path
+
+#### Bug A — Body section heading level (non-deterministic)
+- **Symptom:** FR/DE/ES/IT body sections rendered as Heading 2 in Drive UI. PL/SL/NL/PT rendered correctly as Heading 3. Same model and prompt — translator improvised heading levels.
+- **Root cause:** No explicit heading-preservation instruction in the translator prompt.
+- **Fix applied:** Section 13 added to `config/translation_guidelines.md` (2026-05-07) — "Preserve every heading tag at its exact level."
+- **Status:** Prompt fix deployed. Needs verification on next run.
+
+#### Bug B — FAQ questions always Heading 3 (constant, all 8 languages)
+- **Symptom:** FAQ questions in the dedicated FAQ section render as Heading 3 in Drive UI. Expected: Heading 4.
+- **Root cause:** `translation_doc_writer.py:113` — `faq_html` is hardcoded with `<h3>` tags.
+- **Fix applied:** Changed `<h3>`/`</h3>` to `<h4>`/`</h4>` in `_build_html` (one-line change). Fixed 2026-05-07.
+- **Status:** ✅ Fixed. Existing V-Rod docs will be correct on next re-generation; Bobber run (FAQ array empty) unaffected.
+
+#### Bug C — Stray H2 subtitle after title (non-deterministic)
+- **Symptom:** All 4 new docs (PL/SL/NL/PT) contained an H2 duplicate of the title immediately after the H1, not present in the English source.
+- **Root cause:** Translator adding an unrequested subtitle heading in the `body_markdown` output.
+- **Fix applied:** Section 13 in `config/translation_guidelines.md` — "Do not insert an H2 subtitle between H1 and the first body H3."
+- **Status:** Prompt fix deployed. Needs verification on next run.
+
+All bugs from the V-Rod run are now either fixed in code or addressed via prompt rules. The Drive parents fallback (404 warning during the run) is documented in Operational Notes below.
+
+---
+
+### Important: `--resume` has no skip-completed logic
+
+`translation_workflow.py --resume <doc_id>` reruns **all 8 languages** every time. There is no per-language state tracking. If a partial run needs to be resumed (some languages already done), use `--lang` per remaining language:
+
+```bash
+python3 translation_workflow.py --lang nl 10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4
+python3 translation_workflow.py --lang pl 10qYN4k1nolKG3sgmQ5i2Gmx-AG6zyxQuvUQsAFKrqJ4
+# etc.
+```
+
+`--lang` without `--dry-run` runs in full production mode (saves to Drive, emails if SMTP configured, Trello update silently skips if card is already `completed`).
+
+---
+
+## Operational Notes
+
+### Drive `parents` field — 404 warning and fallback
+
+**Symptom:** During translation runs, a 404 warning is logged when the workflow tries to read the `parents` field of the source doc. Translated docs land in the service account's My Drive root instead of alongside the source doc.
+
+**Root cause:** The service account does not have read access to the source doc's parent folder. The Drive API returns 404 on the `parents` metadata field in this case.
+
+**Behavior:** The fallback is intentional — the workflow continues and uploads translated docs to My Drive root rather than failing. Output is not lost, just misplaced.
+
+**Fix (permissions, not code):** Grant the service account at least **Viewer** access to the source doc's parent folder in Google Drive. After that, the workflow will place translated docs in the correct folder automatically.
+
+**Until then:** After each translation run, manually move the translated docs from My Drive root into the correct folder.
