@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "noreply@legendary-parts.com"
 
+    # ── Shopify ──
+    shopify_store: str = ""          # e.g. spcmotors.myshopify.com
+    shopify_api_key: str = ""        # OAuth client_id
+    shopify_api_secret: str = ""     # OAuth client_secret
+    shopify_access_token: str = ""   # shpat_… permanent access token
+
     # ── Domain ──
     domain: str = "seo.legendary-parts.com"
     frontend_url: str = "https://seo.legendary-parts.com"

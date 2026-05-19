@@ -21,6 +21,7 @@ from app.api.shared.routes import router as shared_router
 from app.api.keygap.routes import router as keygap_router
 from app.api.inkwell.routes import router as inkwell_router
 from app.api.admin.routes import router as admin_router
+from app.api.shopify.routes import router as shopify_router
 
 settings = get_settings()
 
@@ -89,3 +90,4 @@ app.include_router(shared_router)
 app.include_router(keygap_router)
 app.include_router(inkwell_router)
 app.include_router(admin_router)
+app.include_router(shopify_router)
