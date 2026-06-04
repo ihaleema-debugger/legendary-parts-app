@@ -73,7 +73,9 @@ def validate_doc(doc_id: str) -> None:
     try:
         title = drive_reader.get_doc_title(doc_id)
     except RuntimeError as e:
-        _die(str(e))
+        # Raise so the main() except-Exception handler can call _report_failure_to_trello.
+        # _die(sys.exit) would bypass that handler since SystemExit is not an Exception.
+        raise
     print(f"✓ Doc found: {title!r}")
 
 
