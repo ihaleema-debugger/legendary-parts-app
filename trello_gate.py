@@ -254,7 +254,14 @@ def poll_once(state=None, client=None):
                 logger.warning("Could not post Stage 9 summary to Trello: %s", e)
 
             print(f"Comment resolution complete. Starting translation for doc_id={doc_id!r}...\n")
-            _run_translation(doc_id)
+            try:
+                _run_translation(doc_id)
+            except Exception as launch_err:
+                # _run_translation already wrote mark_failed_error + Trello comment.
+                # Catch here so the for-loop continues to process remaining pending cards.
+                logger.error(
+                    "Translation launch failed for doc_id=%r: %s", doc_id, launch_err
+                )
         else:
             checked = sum([validated_1, validated_2])
             logger.info("Card %r: %d/2 validations complete — waiting", card_id, checked)
@@ -263,10 +270,31 @@ def poll_once(state=None, client=None):
 def _run_translation(doc_id):
     _venv_python = _ROOT / "keyword_forge" / ".venv" / "bin" / "python"
     if not _venv_python.exists():
-        raise RuntimeError(
+        reason = (
             f"Venv interpreter not found at {_venv_python}. "
             "Run: cd keyword_forge && python -m venv .venv && pip install -r requirements.txt"
         )
+        # Best-effort failure routing — must happen before raise so the card
+        # doesn't stay stuck in handed_off with no error recorded.
+        try:
+            _state = TrelloState()
+            _row = _state.get_by_doc_id(doc_id)
+            if _row:
+                _state.mark_failed_error(doc_id, reason=reason)
+                try:
+                    _client = TrelloClient()
+                    _client.resolve_list_ids()
+                    _client.move_card_to_list(_row["card_id"], TRELLO_FAILED_LIST_NAME)
+                    _client.add_comment(
+                        _row["card_id"],
+                        f"❌ Translation launch failed — venv missing at {_venv_python}\n"
+                        f"Re-run with `python3 trello_gate.py retry {doc_id}`",
+                    )
+                except Exception as _te:
+                    logger.warning("[failure-routing] Trello update failed for doc_id=%r: %s", doc_id, _te)
+        except Exception as _de:
+            logger.error("[failure-routing] DB routing failed for doc_id=%r: %s", doc_id, _de)
+        raise RuntimeError(reason)
     _trans_log = _ROOT / "logs" / "translation.log"
     _trans_log.parent.mkdir(exist_ok=True)
     with open(_trans_log, "a") as _f:
