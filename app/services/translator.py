@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-from . import anthropic_client
+from . import anthropic_client, deepseek_client
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _GUIDELINES_PATH = _PROJECT_ROOT / "config" / "translation_guidelines.md"
@@ -52,7 +52,7 @@ def translate_blog(
         lang_code: e.g. "fr"
         lang_name: e.g. "French (France)"
         guidelines: full content of translation_guidelines.md
-        model: Anthropic model ID
+        model: DeepSeek model ID
 
     Returns:
         {
@@ -107,20 +107,25 @@ Rules:
         indent=2,
     )
 
-    raw = anthropic_client.call(
-        system_prompt,
-        user_prompt,
-        model=model,
-        max_tokens=8000,
-        max_retries=2,
-    )
+    raw = deepseek_client.call(system_prompt, user_prompt, max_tokens=32000, model=model)
+
+    def _parse(text):
+        if not text:
+            raise RuntimeError("DeepSeek returned an empty response.")
+        try:
+            return json.loads(text)
+        except (ValueError, TypeError):
+            try:
+                return anthropic_client.extract_json(text)
+            except Exception as e:
+                raise RuntimeError(f"Could not parse DeepSeek JSON: {e}")
 
     try:
-        result = anthropic_client.extract_json(raw)
-    except ValueError as e:
+        result = _parse(raw)
+    except RuntimeError as e:
         raise RuntimeError(
-            f"Translator returned non-JSON response for {lang_code}. "
-            f"Raw preview: {raw[:300]!r}. Error: {e}"
+            f"Translator failed to parse response for {lang_code}. "
+            f"Raw preview: {(raw or '')[:300]!r}. Error: {e}"
         ) from e
 
     return {

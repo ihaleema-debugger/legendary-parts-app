@@ -3,6 +3,7 @@
 credentials.json
 token.json
 .session.json
+.token_cache.json
 secrets/
 
 # Temporary processing files
