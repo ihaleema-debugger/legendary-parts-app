@@ -498,13 +498,13 @@ cd ~/Documents/SEO\ Agent\ Workflow
 python3 translation_workflow.py --resume <doc_id>
 ```
 
-This runs 8 parallel translation tasks. Stream all output to the user as it arrives. Each line reports a language completing (✓) or failing (✗).
+This runs 8 translation tasks sequentially, one language at a time. Total runtime typically 5–7 minutes for all 8 languages. Stream all output to the user as it arrives. Each line reports a language completing (✓) or failing (✗).
 
 The workflow:
 1. Fetches the English blog from Drive
 2. Loads `config/translation_guidelines.md`
 3. Connects to Shopify Admin API (replaces legacy CSV URL lookup)
-4. Translates into FR, DE, ES, IT, NL, PL, SL, PT in parallel
+4. Translates into FR, DE, ES, IT, NL, PL, SL, PT sequentially
 5. Localizes internal links via Shopify API queries (three-branch logic)
 6. Runs 5 validation checks per translation
 7. Saves each translated doc to the same Drive folder as the source
