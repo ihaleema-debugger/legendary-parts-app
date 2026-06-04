@@ -118,6 +118,24 @@ class TrelloState:
             conn.commit()
         logger.info("Marked doc_id=%r as failed: %s", doc_id, reason)
 
+    def mark_failed_stale(self, doc_id):
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE trello_validation_cards SET status='failed_stale', failure_reason='stale_14d' WHERE doc_id=?",
+                (doc_id,),
+            )
+            conn.commit()
+        logger.info("Marked doc_id=%r as failed_stale", doc_id)
+
+    def mark_failed_error(self, doc_id, reason=""):
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE trello_validation_cards SET status='failed_error', failure_reason=? WHERE doc_id=?",
+                (reason[:200] if reason else "", doc_id),
+            )
+            conn.commit()
+        logger.info("Marked doc_id=%r as failed_error: %s", doc_id, reason)
+
     def reset_to_pending(self, doc_id):
         with self._connect() as conn:
             conn.execute(
@@ -128,6 +146,20 @@ class TrelloState:
             )
             conn.commit()
         logger.info("Reset doc_id=%r to pending", doc_id)
+
+    def reset_to_pending_new_clock(self, doc_id):
+        """Reset to pending and restart the 14-day staleness clock."""
+        now = _utcnow()
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE trello_validation_cards
+                   SET status='pending', created_at=?, handed_off_at=NULL,
+                       completed_at=NULL, failure_reason=NULL
+                   WHERE doc_id=?""",
+                (now, doc_id),
+            )
+            conn.commit()
+        logger.info("Reset doc_id=%r to pending with new clock (created_at=%s)", doc_id, now)
 
     def log_comment_resolution(
         self,

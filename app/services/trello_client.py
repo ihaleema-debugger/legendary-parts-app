@@ -70,6 +70,35 @@ class TrelloClient:
         logger.info("Resolved list IDs: %s", self._list_ids)
         return self._list_ids
 
+    def ensure_list_id(self, list_name: str) -> str:
+        """Return the Trello list ID for list_name, creating the list if it doesn't exist.
+
+        Caches in self._list_ids so subsequent calls within the same poller tick are free.
+        """
+        if list_name in self._list_ids:
+            return self._list_ids[list_name]
+
+        # Re-fetch board lists in case it was created manually since last resolve_list_ids()
+        resp = self._request("get", f"/boards/{self.board_id}/lists")
+        self._raise_for_status(resp, f"/boards/{self.board_id}/lists")
+        for lst in resp.json():
+            self._list_ids[lst["name"]] = lst["id"]
+
+        if list_name in self._list_ids:
+            return self._list_ids[list_name]
+
+        # Create the list on the board
+        resp = self._request(
+            "post",
+            f"/boards/{self.board_id}/lists",
+            data={"name": list_name},
+        )
+        self._raise_for_status(resp, f"/boards/{self.board_id}/lists")
+        list_id = resp.json()["id"]
+        self._list_ids[list_name] = list_id
+        logger.info("Created Trello list %r on board %r", list_name, self.board_id)
+        return list_id
+
     def create_validation_card(self, blog_title, drive_url):
         # KeyError intentionally propagates if resolve_list_ids() was not called
         id_list = self._list_ids[self.pending_list_name]
@@ -107,6 +136,14 @@ class TrelloClient:
         return card_id
 
     def get_card_checklist_state(self, card_id):
+        card_resp = self._request("get", f"/cards/{card_id}", params={"fields": "closed"})
+        if card_resp.status_code == 404:
+            return None
+        self._raise_for_status(card_resp, f"/cards/{card_id}")
+        if card_resp.json().get("closed"):
+            logger.info("Card %r is archived (closed=true) — treating as deleted", card_id)
+            return None
+
         resp = self._request("get", f"/cards/{card_id}/checklists")
 
         if resp.status_code == 404:

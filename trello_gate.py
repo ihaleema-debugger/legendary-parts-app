@@ -14,6 +14,7 @@ import logging
 import os
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -37,6 +38,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+TRELLO_STALE_DAYS = int(os.environ.get("TRELLO_STALE_DAYS", "14"))
+TRELLO_FAILED_LIST_NAME = os.environ.get("TRELLO_FAILED_LIST_NAME", "Failed translation")
 
 
 def _make_drive_url(doc_id):
@@ -93,15 +97,18 @@ def _ensure_poller_running():
 
     poller = str(_ROOT / "trello_poller.py")
     try:
+        _poller_log = _ROOT / "logs" / "poller.log"
+        _poller_log.parent.mkdir(exist_ok=True)
+        _poller_fh = open(_poller_log, "a")
         subprocess.Popen(
             [sys.executable, poller],
             cwd=str(_ROOT),
             start_new_session=True,   # detach from parent session so it survives terminal close
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=_poller_fh,
+            stderr=_poller_fh,
         )
-        print("  ✓ Trello poller started in the background.")
-        logger.info("Started trello_poller.py as background process")
+        print(f"  ✓ Trello poller started in the background (log: {_poller_log}).")
+        logger.info("Started trello_poller.py as background process (log: %s)", _poller_log)
     except Exception as e:
         print(f"  Warning: could not start poller automatically — {e}")
         print(f"  Start it manually: python3 trello_poller.py")
@@ -146,6 +153,39 @@ def poll_once(state=None, client=None):
 
         validated_1 = checklist_state.get(item_1, False)
         validated_2 = checklist_state.get(item_2, False)
+
+        # Staleness check: move to "Failed translation" if pending > 14 days without both validations
+        try:
+            created_at_dt = datetime.fromisoformat(row["created_at"])
+            if created_at_dt.tzinfo is None:
+                created_at_dt = created_at_dt.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - created_at_dt
+        except (ValueError, TypeError) as exc:
+            logger.warning(
+                "Could not parse created_at for doc_id=%r (%s) — skipping staleness check",
+                doc_id, exc,
+            )
+            age = timedelta(0)
+
+        if age > timedelta(days=TRELLO_STALE_DAYS) and not (validated_1 and validated_2):
+            try:
+                client.ensure_list_id(TRELLO_FAILED_LIST_NAME)
+                client.move_card_to_list(card_id, TRELLO_FAILED_LIST_NAME)
+                client.add_comment(
+                    card_id,
+                    "Marked as failed translation — this card was pending for more than "
+                    f"{TRELLO_STALE_DAYS} days without validation. "
+                    f"Re-run with `python3 trello_gate.py retry {doc_id}` if you want to retry.",
+                )
+            except Exception as exc:
+                logger.warning("Could not move stale card %r to failed list: %s", card_id, exc)
+            state.mark_failed_stale(doc_id)
+            logger.info(
+                "[Trello gate] Card %r for doc_id=%r marked stale after %d days, "
+                "moved to %r list",
+                card_id, doc_id, TRELLO_STALE_DAYS, TRELLO_FAILED_LIST_NAME,
+            )
+            continue
 
         if validated_1 and validated_2:
             logger.info("Both validations complete for doc_id=%r — running comment resolution", doc_id)
@@ -221,16 +261,23 @@ def poll_once(state=None, client=None):
 
 
 def _run_translation(doc_id):
-    result = subprocess.run(
-        [sys.executable, "translation_workflow.py", "--resume", doc_id],
-        cwd=str(_ROOT),
-    )
-    if result.returncode != 0:
-        logger.warning(
-            "translation_workflow.py exited with code %d for doc_id=%r",
-            result.returncode,
-            doc_id,
+    _venv_python = _ROOT / "keyword_forge" / ".venv" / "bin" / "python"
+    if not _venv_python.exists():
+        raise RuntimeError(
+            f"Venv interpreter not found at {_venv_python}. "
+            "Run: cd keyword_forge && python -m venv .venv && pip install -r requirements.txt"
         )
+    _trans_log = _ROOT / "logs" / "translation.log"
+    _trans_log.parent.mkdir(exist_ok=True)
+    with open(_trans_log, "a") as _f:
+        _f.write(f"\n{'='*60}\n[{datetime.now().isoformat()}] Starting translation for doc_id={doc_id}\n")
+    _trans_fh = open(_trans_log, "a")
+    subprocess.Popen(
+        [str(_venv_python), "translation_workflow.py", "--resume", doc_id],
+        cwd=str(_ROOT),
+        stdout=_trans_fh,
+        stderr=_trans_fh,
+    )
 
 
 def cmd_poll():
@@ -263,6 +310,24 @@ def cmd_retry(doc_id):
         cmd_register(doc_id, row["blog_title"])
         return
 
+    if row["status"] in ("failed_stale", "failed_error"):
+        client = TrelloClient()
+        try:
+            client.resolve_list_ids()
+        except RuntimeError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        pending_list = os.environ.get("TRELLO_PENDING_LIST_NAME", "To Do")
+        try:
+            client.move_card_to_list(row["card_id"], pending_list)
+            client.uncheck_all_checklist_items(row["card_id"])
+        except Exception as e:
+            print(f"Warning: Trello update failed: {e}")
+        state.reset_to_pending_new_clock(doc_id)
+        label = "crash" if row["status"] == "failed_error" else "staleness timeout"
+        print(f"Card re-activated (was failed due to {label}). 14-day staleness clock restarted.")
+        return
+
     if row["status"] == "pending":
         # Re-check checklist right now and force handoff if both done
         client = TrelloClient()
@@ -292,7 +357,7 @@ def cmd_retry(doc_id):
 
     print(
         f"doc_id={doc_id!r} has status={row['status']!r}. "
-        "Only 'pending' and 'failed' cards can be retried."
+        "Only 'pending', 'failed', 'failed_stale', and 'failed_error' cards can be retried."
     )
 
 
@@ -304,7 +369,7 @@ def cmd_status():
         print("No cards tracked yet.")
         return
 
-    col_widths = [44, 30, 24, 11, 20]
+    col_widths = [44, 30, 24, 13, 20]
     header = (
         f"{'doc_id':<{col_widths[0]}} "
         f"{'blog_title':<{col_widths[1]}} "

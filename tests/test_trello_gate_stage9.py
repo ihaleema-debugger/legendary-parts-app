@@ -13,7 +13,12 @@ from app.services.comment_resolution import DRIVE_RESOLVE_FAILURE_NOTE
 
 
 def _make_validated_row():
-    return {"doc_id": "DOC1", "card_id": "CARD1", "blog_title": "Test Blog"}
+    return {
+        "doc_id": "DOC1",
+        "card_id": "CARD1",
+        "blog_title": "Test Blog",
+        "created_at": "2099-01-01T00:00:00+00:00",  # far future → never stale
+    }
 
 
 def _make_validated_checklist():
