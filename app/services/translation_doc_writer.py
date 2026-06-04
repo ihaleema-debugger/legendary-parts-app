@@ -102,6 +102,7 @@ def _build_html(translated: dict, flags: list, source_doc_id: str, lang_code: st
     title = _esc(translated.get("title", ""))
     meta = _esc(translated.get("meta_description", ""))
     body_md = translated.get("body_markdown", "")
+    body_md = strip_locale_annotations(body_md)
     faq = translated.get("faq", [])
 
     body_html = _markdown_to_html(body_md)
@@ -109,7 +110,7 @@ def _build_html(translated: dict, flags: list, source_doc_id: str, lang_code: st
     faq_html = ""
     if faq:
         faq_items = "\n".join(
-            f"<h3>{_esc(item.get('question', ''))}</h3>\n<p>{_esc(item.get('answer', ''))}</p>"
+            f"<h4>{_esc(item.get('question', ''))}</h4>\n<p>{_esc(item.get('answer', ''))}</p>"
             for item in faq
         )
         faq_html = f"<h2>FAQ</h2>\n{faq_items}"
@@ -172,6 +173,16 @@ def _build_flags_section(flags: list) -> str:
         return ""
 
     return "<hr>\n<h2>Review Flags</h2>\n" + "\n".join(sections)
+
+
+_LOCALE_ANNOTATION = re.compile(r'[ \t]*\[[A-Z]{2}:\s*.*?\]')
+
+
+def strip_locale_annotations(text: str) -> str:
+    """Drop trailing [XX: ...] cross-reference markers from url_localizer.
+    Each duplicates the anchor of the link right before it, so remove the
+    whole annotation plus its leading space."""
+    return _LOCALE_ANNOTATION.sub('', text)
 
 
 def _markdown_to_html(md: str) -> str:
