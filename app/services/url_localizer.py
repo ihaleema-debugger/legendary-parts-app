@@ -52,7 +52,7 @@ def _process_link(
         return match.group(0)  # external — pass through
 
     if shopify_client is None:
-        return match.group(0)  # Shopify unavailable — pass through unchanged
+        return f"[{anchor}]({url}) [EN: {anchor}]"  # annotate for spot-checking; URL localization skipped
 
     oem = _extract_oem(url)
     if oem:
