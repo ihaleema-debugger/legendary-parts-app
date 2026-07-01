@@ -26,6 +26,63 @@ def get_doc_folder_id(doc_id: str) -> Optional[str]:
     return parents[0] if parents else None
 
 
+def find_files_in_folder(folder_id: str, name_prefix: str) -> list:
+    """List Google Docs in `folder_id` whose name starts with `name_prefix`.
+
+    Returns a list of dicts: [{id, name, locale}, ...] where locale is the
+    suffix after the last '--' (e.g. 'de' for 'blog-name--de').
+    Skips files whose names don't match the `--XX` pattern.
+    """
+    service = _get_service()
+    query = (
+        f"'{folder_id}' in parents "
+        f"and name contains '{name_prefix}' "
+        f"and mimeType = 'application/vnd.google-apps.document' "
+        f"and trashed = false"
+    )
+    try:
+        results = service.files().list(
+            q=query,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            corpora="allDrives",
+            pageSize=100,
+        ).execute()
+    except HttpError as e:
+        raise RuntimeError(f"Drive list failed for folder {folder_id!r}: {e}") from e
+
+    matches = []
+    for f in results.get("files", []):
+        name = f["name"]
+        if not name.startswith(name_prefix):
+            continue
+        # extract locale from the trailing --XX
+        if "--" not in name:
+            continue
+        locale = name.rsplit("--", 1)[-1].strip().lower()
+        # accept only short locale codes (2 chars, possibly with region like pt-br)
+        if not (2 <= len(locale) <= 5):
+            continue
+        matches.append({"id": f["id"], "name": name, "locale": locale})
+    return matches
+
+
+def export_doc_as_html(doc_id: str) -> str:
+    """Export a Google Doc as HTML. Returns the raw HTML string."""
+    service = _get_service()
+    try:
+        data = service.files().export(
+            fileId=doc_id, mimeType="text/html"
+        ).execute()
+    except HttpError as e:
+        raise RuntimeError(f"Drive export failed for doc {doc_id!r}: {e}") from e
+    # export() returns bytes
+    if isinstance(data, bytes):
+        return data.decode("utf-8")
+    return data
+
+
 def upload_json_to_drive(filename: str, data: dict, folder_id: Optional[str] = None) -> dict:
     """Upload a dict as a raw JSON file to Drive. Returns created file metadata.
 
@@ -92,11 +149,52 @@ def create_doc(title: str, folder_id: Optional[str] = None) -> dict:
         raise RuntimeError(f"Drive doc creation failed: {e}") from e
 
 
+def _blocks_to_html(blocks: list) -> str:
+    """Convert JSON blocks (from seo-blog-writer) to HTML for Drive import."""
+    import html as html_lib
+    parts = ["<html><body>"]
+    for block in blocks:
+        level = block.get("level", "p")
+        text = block.get("text", "")
+        links = block.get("links", [])
+
+        # Embed hyperlinks: replace each anchor text with <a href> in order
+        for link in links:
+            anchor = link.get("anchor", "")
+            url = link.get("url", "")
+            if anchor and url and anchor in text:
+                escaped_anchor = html_lib.escape(anchor)
+                escaped_url = html_lib.escape(url)
+                text = text.replace(anchor, f'<a href="{escaped_url}">{escaped_anchor}</a>', 1)
+        # Escape any remaining bare ampersands / angle brackets not inside tags
+        # (simple approach: only escape text outside existing <a> tags is tricky,
+        #  so we rely on anchor/url values being clean URLs)
+
+        tag_map = {"title": "h1", "h2": "h2", "h3": "h3", "h4": "h4", "p": "p"}
+        tag = tag_map.get(level, "p")
+        parts.append(f"<{tag}>{text}</{tag}>")
+
+    parts.append("</body></html>")
+    return "\n".join(parts)
+
+
 def upload_blog_to_drive(title: str, content: str, folder_id: Optional[str] = None) -> dict:
-    """Upload text content as a Google Doc. Returns the created file metadata."""
+    """Upload blog content as a Google Doc. Accepts raw text or JSON blocks format."""
+    import json as _json
     service = _get_service()
     folder_id = folder_id or os.environ.get("GOOGLE_DRIVE_FOLDER_ID", "")
-    shared_drive_id = os.environ.get("GOOGLE_SHARED_DRIVE_ID", "")
+
+    # Detect JSON blocks format produced by seo-blog-writer and convert to HTML
+    # so Drive preserves heading styles (h1/h3/h4) instead of showing raw JSON.
+    try:
+        parsed = _json.loads(content)
+        if isinstance(parsed, dict) and "blocks" in parsed:
+            content = _blocks_to_html(parsed["blocks"])
+            mimetype = "text/html"
+        else:
+            mimetype = "text/plain"
+    except (_json.JSONDecodeError, ValueError):
+        mimetype = "text/plain"
 
     file_metadata = {
         "name": title,
@@ -105,11 +203,8 @@ def upload_blog_to_drive(title: str, content: str, folder_id: Optional[str] = No
     if folder_id:
         file_metadata["parents"] = [folder_id]
 
-    # Drive API imports content via multipart upload with plain-text body;
-    # the conversion to Google Doc format happens server-side.
     from googleapiclient.http import MediaInMemoryUpload
-
-    media = MediaInMemoryUpload(content.encode("utf-8"), mimetype="text/plain", resumable=False)
+    media = MediaInMemoryUpload(content.encode("utf-8"), mimetype=mimetype, resumable=False)
 
     try:
         file = (
@@ -117,6 +212,13 @@ def upload_blog_to_drive(title: str, content: str, folder_id: Optional[str] = No
             .create(body=file_metadata, media_body=media, fields="id, name, webViewLink", supportsAllDrives=True)
             .execute()
         )
+        # Grant "anyone with link" read access so the doc is openable without
+        # individual email permissions being set up per recipient.
+        service.permissions().create(
+            fileId=file["id"],
+            body={"type": "anyone", "role": "reader"},
+            supportsAllDrives=True,
+        ).execute()
         return file
     except HttpError as e:
         raise RuntimeError(f"Drive upload failed: {e}") from e

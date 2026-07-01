@@ -40,12 +40,21 @@ class TrelloState:
                     created_at TEXT NOT NULL,
                     handed_off_at TEXT,
                     completed_at TEXT,
-                    failure_reason TEXT
+                    failure_reason TEXT,
+                    fr_doc_id TEXT
                 )
             """)
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_status ON trello_validation_cards(status)"
             )
+            # Migration: add fr_doc_id to existing tables that pre-date this column
+            try:
+                conn.execute(
+                    "ALTER TABLE trello_validation_cards ADD COLUMN fr_doc_id TEXT"
+                )
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass  # column already exists
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS comment_resolutions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,6 +98,14 @@ class TrelloState:
             ).fetchone()
         return dict(row) if row else None
 
+    def get_by_card_id(self, card_id):
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM trello_validation_cards WHERE card_id = ?",
+                (card_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def mark_handed_off(self, doc_id):
         now = _utcnow()
         with self._connect() as conn:
@@ -108,6 +125,15 @@ class TrelloState:
             )
             conn.commit()
         logger.info("Marked doc_id=%r as completed", doc_id)
+
+    def save_fr_doc_id(self, doc_id: str, fr_doc_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE trello_validation_cards SET fr_doc_id=? WHERE doc_id=?",
+                (fr_doc_id, doc_id),
+            )
+            conn.commit()
+        logger.info("Saved fr_doc_id=%r for doc_id=%r", fr_doc_id, doc_id)
 
     def mark_failed(self, doc_id, reason=""):
         with self._connect() as conn:

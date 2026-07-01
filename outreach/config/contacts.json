@@ -1,0 +1,1388 @@
+{
+  "contacts": [
+    {
+      "domain": "partseurope.eu",
+      "organisation": "Parts Europe",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "EU distributor. Playbook: 'Parts Europe (partseurope.eu)'. Dealer-locator/stockist application; confirm Legendary is active stockist before applying.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "mcs.nl",
+      "organisation": "Motorcycle Storehouse",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "EU distributor. Playbook: 'Motorcycle Storehouse (mcs.nl)'. Dealer-locator/stockist application.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "zodiac.nl",
+      "organisation": "Zodiac International",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "EU distributor. Playbook: 'Zodiac International (zodiac.nl)'. Dealer-locator/stockist application.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Custom Chrome Europe",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "EU distributor. Playbook: 'Custom Chrome Europe'. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "W&W Cycles",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "EU distributor. Playbook: 'W&W Cycles'. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "sscycle.com",
+      "organisation": "S&S Cycle",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "placeholder@example.com",
+          "needs_lookup": false,
+          "role": "Editorial Contact",
+          "email_candidate": "placeholder@example.com",
+          "candidate_source": "human-promote",
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": "sscycle.com/dealer-locator/",
+      "note": "Direct US brand. Playbook: 'S&S Cycle (sscycle.com/dealer-locator/)'. US brands often route through Parts Europe / Tucker Powersports EU.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Vance & Hines",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Direct US brand. Playbook: 'Vance & Hines'. US brands often route through Parts Europe / Tucker Powersports EU. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Kuryakyn",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Direct US brand. Playbook: 'Kuryakyn'. US brands often route through Parts Europe / Tucker Powersports EU. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Memphis Shades",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Direct US brand. Playbook: 'Memphis Shades'. US brands often route through Parts Europe / Tucker Powersports EU. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Arlen Ness",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Direct US brand. Playbook: 'Arlen Ness'. US brands often route through Parts Europe / Tucker Powersports EU. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Mustang Seats",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Direct US brand. Playbook: 'Mustang Seats'. US brands often route through Parts Europe / Tucker Powersports EU. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Burly Brand",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Direct US brand. Playbook: 'Burly Brand'. US brands often route through Parts Europe / Tucker Powersports EU. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Roland Sands Design",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Direct US brand. Playbook: 'Roland Sands Design'. US brands often route through Parts Europe / Tucker Powersports EU. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "hd-forum.de",
+      "organisation": "HD-Forum.de / Milwaukee-V-Twin.de",
+      "lane": 2,
+      "outreach_type": "vendor-enquiry",
+      "market": "DE",
+      "language": "de",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": "forum-admin",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'HD-Forum.de / Milwaukee-V-Twin.de (30,000+ members, Händler sub-forum — single highest-yield placement available)'. Milwaukee-V-Twin.de is same site. Vendor-status enquiry to forum admin; commit to answering fitment questions, not promoting. Small annual fee.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "hdforums.com",
+      "organisation": "HDForums.com",
+      "lane": 2,
+      "outreach_type": "vendor-enquiry",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": "forum-admin",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'HDForums.com (Platinum/Basic vendor tiers)'. Small annual fee.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "passion-harley.fr",
+      "organisation": "Passion-Harley.fr",
+      "lane": 2,
+      "outreach_type": "vendor-enquiry",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": "forum-admin",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Passion-Harley.fr (14,886 members)'.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "harley-nation.net",
+      "organisation": "Harley-Nation.net",
+      "lane": 2,
+      "outreach_type": "vendor-enquiry",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": "forum-admin",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Harley-Nation.net'.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Le Repaire des Motards — vendor directory",
+      "lane": 2,
+      "outreach_type": "vendor-enquiry",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Le Repaire des Motards \"Pros/Prestataires Amis\" directory'. Vendor-directory listing, not editorial pitch. Domain not given in playbook — needs_lookup. See also Lane 3 record (same org, editorial target).",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "motomag.com",
+      "organisation": "Moto Magazine",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": "Steeve Gourdel",
+          "email": "sgourdel@motomag.com",
+          "needs_lookup": false,
+          "role": "services",
+          "email_candidate": "sgourdel@motomag.com",
+          "candidate_source": "human-promote",
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Moto Magazine / FFMC — Steeve Gourdel, sgourdel@motomag.com (services)'. Journalist pitch ≤65 words; lead with data or expert mechanic comment.",
+      "fetch_attempts": 0,
+      "personalization_hook": "Données terrain sur les pannes Milwaukee-Eight les plus fréquentes, commentées par notre mécanicien spécialiste Harley-Davidson"
+    },
+    {
+      "domain": "motorcyclenews.com",
+      "organisation": "Motorcycle News (MCN)",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "UK",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": "Richard Newland",
+          "email": "richard.newland@motorcyclenews.com",
+          "needs_lookup": false,
+          "role": "editorial",
+          "email_candidate": "richard.newland@motorcyclenews.com",
+          "candidate_source": "human-promote",
+          "candidate_status": "confirmed"
+        },
+        {
+          "name": "Justin Hayzelden",
+          "email": "justin.hayzelden@motorcyclenews.com",
+          "needs_lookup": false,
+          "role": "products",
+          "email_candidate": "justin.hayzelden@motorcyclenews.com",
+          "candidate_source": "human-promote",
+          "candidate_status": "confirmed"
+        },
+        {
+          "name": "Rebecca Jackson",
+          "email": null,
+          "needs_lookup": true,
+          "role": "commercial",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'MCN — Richard Newland, richard.newland@motorcyclenews.com (editorial); Justin Hayzelden, justin.hayzelden@motorcyclenews.com (products); Rebecca Jackson (commercial)'. Pitch ≤65 words. Advertorials ~€1,500 but publisher may mark rel=sponsored.",
+      "fetch_attempts": 0,
+      "personalization_hook": "OEM-vs-aftermarket fitment insight for a products roundup, backed by our specialist Harley-Davidson workshop"
+    },
+    {
+      "domain": null,
+      "organisation": "Le Repaire des Motards — editorial",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Plus Le Repaire des Motards' (Lane 3 named publication). Domain not given in playbook — needs_lookup. See also Lane 2 record (same org, vendor-directory target).",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Moto-Station (Caradisiac)",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Moto-Station (Caradisiac)'. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Moto Journal / Moto Revue (Reworld)",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Moto Journal / Moto Revue (Reworld)'. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "motorradonline.de",
+      "organisation": "Motorradonline.de",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "DE",
+      "language": "de",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Motorradonline.de'. Lane 3 DE press target.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "motor-talk.de",
+      "organisation": "Motor-Talk.de",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "DE",
+      "language": "de",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Motor-Talk.de'. Lane 3 DE press target.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Visordown",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "UK",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Visordown'. UK press target. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Bike Magazine",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "UK",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Bike Magazine'. UK press target. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "BikeEXIF",
+      "lane": 4,
+      "outreach_type": "submit-build",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'BikeEXIF (public submit-your-motorcycle page)'. Submit URL not given in playbook — needs_lookup. Requires real build + photos; link comes from parts-list credit to legendary-parts.com.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Silodrome",
+      "lane": 4,
+      "outreach_type": "submit-build",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Silodrome'. Lane 4 custom/cruiser editorial. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Bikernet",
+      "lane": 4,
+      "outreach_type": "submit-build",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Bikernet'. Lane 4 custom/cruiser editorial. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Return of the Cafe Racers",
+      "lane": 4,
+      "outreach_type": "submit-build",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Return of the Cafe Racers'. Lane 4 custom/cruiser editorial. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Iron & Air",
+      "lane": 4,
+      "outreach_type": "submit-build",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Iron & Air'. Lane 4 custom/cruiser editorial. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Cyril Huze Post",
+      "lane": 4,
+      "outreach_type": "submit-build",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Cyril Huze Post'. Lane 4 custom/cruiser editorial. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "FFMC",
+      "lane": 6,
+      "outreach_type": "resource-email",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'FFMC' (Lane 6 resource/association target). Federation resource-page suggestion. Domain not given in playbook — needs_lookup. Note: Steeve Gourdel at motomag.com is the Lane 3 press contact for Moto Magazine/FFMC editorial — see that separate record.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "BVDM",
+      "lane": 6,
+      "outreach_type": "resource-email",
+      "market": "DE",
+      "language": "de",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'BVDM' (Lane 6 resource/association target). Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "lawabidingbiker.com",
+      "organisation": "Law Abiding Biker",
+      "lane": 7,
+      "outreach_type": "affiliate-offer",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "press@lawabidingbiker.com",
+          "needs_lookup": false,
+          "role": "press",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Law Abiding Biker (200k+ subs, press@lawabidingbiker.com)'. Offer product seeding + affiliate terms; reference a specific video of theirs.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Fix My Hog",
+      "lane": 7,
+      "outreach_type": "affiliate-offer",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Fix My Hog'. Lane 7 affiliate/influencer. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Bike Shed Moto Co",
+      "lane": 7,
+      "outreach_type": "affiliate-offer",
+      "market": "UK",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Bike Shed Moto Co (192k)'. 192k subscribers. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "44Teeth",
+      "lane": 7,
+      "outreach_type": "affiliate-offer",
+      "market": "UK",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: '44Teeth'. UK affiliate/influencer target. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Blockhead",
+      "lane": 7,
+      "outreach_type": "affiliate-offer",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Blockhead'. Affiliate/influencer target. Domain not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Google Business Profile",
+      "lane": 8,
+      "outreach_type": "self-claim",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [],
+      "action_url": null,
+      "note": "Playbook: 'Google Business Profile'. Self-service claim — no outreach email. Action URL not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Trustpilot",
+      "lane": 8,
+      "outreach_type": "self-claim",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [],
+      "action_url": null,
+      "note": "Playbook: 'Trustpilot'. Self-service claim — no outreach email. Action URL not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Trusted Shops",
+      "lane": 8,
+      "outreach_type": "self-claim",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [],
+      "action_url": null,
+      "note": "Playbook: 'Trusted Shops'. Self-service claim — no outreach email. Action URL not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Pages Jaunes",
+      "lane": 8,
+      "outreach_type": "self-claim",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [],
+      "action_url": null,
+      "note": "Playbook: 'Pages Jaunes'. Self-service claim — no outreach email. Action URL not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "FFMC member listing",
+      "lane": 8,
+      "outreach_type": "self-claim",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [],
+      "action_url": null,
+      "note": "Playbook: 'FFMC member listing'. Self-service claim — no outreach email. Action URL not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "custombike-show.de",
+      "organisation": "Custombike-Show Bad Salzuflen",
+      "lane": null,
+      "outreach_type": "event-registration",
+      "market": "DE",
+      "language": "de",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "info@custombike-show.de",
+          "needs_lookup": false,
+          "role": "exhibitor-enquiry",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Custombike-Show Bad Salzuflen (info@custombike-show.de, 27–29 Nov 2026)'. Event exhibitor booth — persistent link from exhibitor pages. Not an editorial pitch.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Magic Bike Rüdesheim",
+      "lane": null,
+      "outreach_type": "event-registration",
+      "market": "DE",
+      "language": "de",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": "exhibitor-enquiry",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Magic Bike Rüdesheim'. Domain and contact not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "European Bike Week Faaker See",
+      "lane": null,
+      "outreach_type": "event-registration",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": "exhibitor-enquiry",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'European Bike Week Faaker See'. Austria. Domain and contact not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Wheels & Waves",
+      "lane": null,
+      "outreach_type": "event-registration",
+      "market": "FR",
+      "language": "fr",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": "exhibitor-enquiry",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Wheels & Waves'. Biarritz, France. Domain and contact not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": null,
+      "organisation": "Hamburg Harley Days",
+      "lane": null,
+      "outreach_type": "event-registration",
+      "market": "DE",
+      "language": "de",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": null,
+          "needs_lookup": true,
+          "role": "exhibitor-enquiry",
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "none"
+        }
+      ],
+      "action_url": null,
+      "note": "Playbook: 'Hamburg Harley Days'. Domain and contact not given in playbook — needs_lookup.",
+      "fetch_attempts": 0,
+      "personalization_hook": ""
+    },
+    {
+      "domain": "motor1.com",
+      "organisation": "Motor1",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "press@motor1.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: Pitch a Harley feature/expert quote; large outlet, find editorial contact",
+      "fetch_attempts": 0,
+      "personalization_hook": "Owners across Europe are facing a growing challenge: finding replacement parts for vintage Harley models."
+    },
+    {
+      "domain": "pistonheads.com",
+      "organisation": "Pistonheads",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "adverts@pistonheads.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: Relevant auto media — pitch editorial/sponsored feature; email on file (adverts@)",
+      "fetch_attempts": 0,
+      "personalization_hook": "The biggest challenge for modern classic motorcycle owners often begins after production ends."
+    },
+    {
+      "domain": "ridermagazine.com",
+      "organisation": "Ridermagazine",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "customerservice@epgmediallc.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: Core moto magazine — pitch Harley feature/parts review; email on file (find editorial contact)",
+      "fetch_attempts": 0,
+      "personalization_hook": "Understanding common motorcycle failures can help riders avoid breakdowns and unexpected roadside stops."
+    },
+    {
+      "domain": "bikesure.co.uk",
+      "organisation": "Bikesure",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "gavin@mazemedia.co.uk",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: UK moto-insurance blog — pitch guest/resource link on rider content; find contact",
+      "fetch_attempts": 0,
+      "personalization_hook": "Rising motorcycle prices are changing how riders approach maintenance, repairs, and long-term ownership."
+    },
+    {
+      "domain": "topgear.es",
+      "organisation": "Topgear",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "topgear@henneomagazines.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: Top Gear Spain, EU reach — pitch a moto feature; email on file",
+      "fetch_attempts": 0,
+      "personalization_hook": "Demand for discontinued motorcycle parts highlights the rise of restoration and long-term ownership."
+    },
+    {
+      "domain": "adventurebikerider.com",
+      "organisation": "Adventurebikerider",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "james@adventurebikerider.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: ADV-moto magazine — pitch Harley/touring feature or parts resource; find contact",
+      "fetch_attempts": 0,
+      "personalization_hook": "Preventive maintenance remains one of the most effective ways to avoid roadside failures."
+    },
+    {
+      "domain": "iamabiker.com",
+      "organisation": "Iamabiker",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "editor@iamabiker.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: Motorcycle blog — pitch Harley feature/parts content; email on file",
+      "fetch_attempts": 0,
+      "personalization_hook": "A simple component failure can quickly reveal how difficult some motorcycle parts are to find."
+    },
+    {
+      "domain": "taketotheroad.co.uk",
+      "organisation": "Taketotheroad",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "hello@taketotheroad.co.uk",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: Classic-motoring blog (cars & bikes) — pitch a classic-Harley feature; email on file",
+      "fetch_attempts": 0,
+      "personalization_hook": "Experienced riders know that successful tours begin with careful mechanical preparation."
+    },
+    {
+      "domain": "thebikerguide.co.uk",
+      "organisation": "Thebikerguide",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "thebikerguide@live.co.uk",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-DIRECTORY. Angle: UK biker directory/guide — submit Legendary for a listing; find contact",
+      "fetch_attempts": 0,
+      "personalization_hook": "The longevity of older motorcycles often depends on access to increasingly scarce replacement parts"
+    }
+  ]
+}

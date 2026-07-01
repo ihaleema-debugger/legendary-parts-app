@@ -41,18 +41,36 @@ _YEAR_RANGE_RE = re.compile(r"\b(19|20)\d{2}[–—-](19|20)\d{2}\b")
 _OEM_RE = re.compile(r"\b[A-Z0-9]{3,}-[A-Z0-9]{2,}[A-Z]?\b")
 
 
+def _normalize_number(num_str: str) -> str:
+    """Return digit-only form for locale-agnostic number comparison.
+
+    Strips thousands separators (comma, period, space, NBSP, NNBSP) and decimal
+    separators so that "3,000", "3 000", and "3.000" all compare equal.
+    """
+    return re.sub(r"[^\d]", "", num_str)
+
+
 def check_numerical_fidelity(source_text: str, target_text: str) -> list[dict]:
     """Flag numbers, year ranges, and OEM codes present in source but absent in target."""
     flags: list[dict] = []
 
-    src_numbers = set(_NUMBER_RE.findall(_strip_html(source_text)))
-    tgt_numbers = set(_NUMBER_RE.findall(target_text))
-    for num in src_numbers - tgt_numbers:
-        flags.append(_flag(
-            "numerical_fidelity", "error",
-            f"Number '{num}' found in source but missing in translation",
-            "body",
-        ))
+    src_numbers_raw = _NUMBER_RE.findall(_strip_html(source_text))
+    tgt_numbers_raw = _NUMBER_RE.findall(target_text)
+
+    # Normalize both sides to digit-only so locale-specific thousands separators
+    # (3,000 vs 3 000 vs 3.000) don't produce false positives.
+    src_norm_to_original: dict[str, str] = {}
+    for n in src_numbers_raw:
+        src_norm_to_original.setdefault(_normalize_number(n), n)
+    tgt_normalized = {_normalize_number(n) for n in tgt_numbers_raw}
+
+    for norm, original in src_norm_to_original.items():
+        if norm not in tgt_normalized:
+            flags.append(_flag(
+                "numerical_fidelity", "error",
+                f"Number '{original}' found in source but missing in translation",
+                "body",
+            ))
 
     src_years = set(_YEAR_RANGE_RE.findall(source_text))
     tgt_years = set(_YEAR_RANGE_RE.findall(target_text))
@@ -81,10 +99,16 @@ def check_structural_fidelity(source_body: str, target_body: str) -> list[dict]:
     """Flag paragraph count mismatches and per-paragraph sentence deviations > ±1."""
     flags: list[dict] = []
 
-    src_paras = _split_paragraphs(_strip_html(source_body))
+    # Source arrives as HTML; use block-tag-aware splitting so each <p>…</p>
+    # becomes its own paragraph rather than one collapsed blob.
+    src_paras = _split_html_paragraphs(source_body)
     tgt_paras = _split_paragraphs(target_body)
 
     if len(src_paras) != len(tgt_paras):
+        print(
+            f"[structural_fidelity] paragraph count: source={len(src_paras)}, translation={len(tgt_paras)}",
+            flush=True,
+        )
         flags.append(_flag(
             "structural_fidelity", "warning",
             f"Paragraph count mismatch: source has {len(src_paras)}, translation has {len(tgt_paras)}",
@@ -106,6 +130,26 @@ def check_structural_fidelity(source_body: str, target_body: str) -> list[dict]:
 
 
 def _split_paragraphs(text: str) -> list[str]:
+    return [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
+
+
+def _split_html_paragraphs(html: str) -> list[str]:
+    """Split HTML source into paragraphs using block-level tag boundaries.
+
+    Converts closing block tags to double newlines before stripping HTML so that
+    <p>Para 1</p><p>Para 2</p> doesn't collapse into a single paragraph.
+    Falls back to double-newline splitting if the input contains no HTML tags.
+    """
+    if "<" not in html:
+        return _split_paragraphs(html)
+    # Insert paragraph break at each closing block tag
+    text = re.sub(
+        r"</(?:p|div|li|h[1-6]|blockquote|pre|tr)>",
+        "\n\n",
+        html,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"<[^>]+>", " ", text)
     return [p.strip() for p in re.split(r"\n{2,}", text) if p.strip()]
 
 
@@ -157,6 +201,17 @@ def _extract_protected_tokens(guidelines: str) -> list[str]:
 _MD_LINK_RE = re.compile(r"\[([^\]]*)\]\((https?://[^\)]+)\)")
 _HTML_LINK_RE = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
 _REVIEW_FLAG_RE = re.compile(r"\[REVIEW:")
+_LANG_SEGMENT_RE = re.compile(
+    r"^(https?://[^/]+)/(?:en|fr|de|es|it|pl|sl|nl|pt)(/.*)$"
+)
+
+
+def _normalize_url_lang(url: str) -> str:
+    """Strip the language-code path segment so /en/… and /fr/… compare equal."""
+    m = _LANG_SEGMENT_RE.match(url)
+    if m:
+        return m.group(1) + m.group(2)
+    return url
 
 
 def check_link_integrity(source_body: str, target_body: str) -> list[dict]:
@@ -164,6 +219,7 @@ def check_link_integrity(source_body: str, target_body: str) -> list[dict]:
 
     A removed hyperlink accompanied by a [REVIEW:...] inline flag is NOT counted
     as a missing link — it was intentionally flagged by url_localizer.
+    Localized URL paths (/en/… vs /fr/…) are treated as matching counterparts.
     """
     flags: list[dict] = []
 
@@ -171,16 +227,21 @@ def check_link_integrity(source_body: str, target_body: str) -> list[dict]:
         m.group(2) for m in _MD_LINK_RE.finditer(source_body)
     )
     tgt_urls = set(m.group(2) for m in _MD_LINK_RE.finditer(target_body))
+    tgt_urls_normalized = {_normalize_url_lang(u) for u in tgt_urls}
 
     for url in src_urls:
-        if url not in tgt_urls:
-            # Check if this was intentionally removed with a [REVIEW:] annotation
-            if not _has_review_annotation_for_url(url, target_body):
-                flags.append(_flag(
-                    "link_integrity", "warning",
-                    f"Source link '{url[:80]}' has no counterpart in translation and no [REVIEW:] annotation",
-                    "body",
-                ))
+        if url in tgt_urls:
+            continue
+        # Accept a locale-swapped version of the same path as a valid counterpart
+        if _normalize_url_lang(url) in tgt_urls_normalized:
+            continue
+        # Check if this was intentionally removed with a [REVIEW:] annotation
+        if not _has_review_annotation_for_url(url, target_body):
+            flags.append(_flag(
+                "link_integrity", "warning",
+                f"Source link '{url[:80]}' has no counterpart in translation and no [REVIEW:] annotation",
+                "body",
+            ))
 
     return flags
 

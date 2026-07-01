@@ -1,0 +1,52 @@
+{
+  "contacts": [
+    {
+      "domain": "fixture-supplier.example.com",
+      "organisation": "Fixture Supplier Co",
+      "lane": 1,
+      "outreach_type": "application",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": "Fixture Supplier Contact",
+          "email": "supplier@example.com",
+          "needs_lookup": false,
+          "role": "Dealer Programme",
+          "email_candidate": "supplier@example.com",
+          "candidate_source": "fixture",
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": "fixture-supplier.example.com/dealer-locator/",
+      "personalization_hook": "saw Fixture Supplier just opened EU distribution via Rotterdam",
+      "note": "FIXTURE — test record only. Not a real prospect.",
+      "fetch_attempts": 0
+    },
+    {
+      "domain": "fixture-editorial.example.com",
+      "organisation": "Fixture Editorial Co",
+      "lane": 3,
+      "outreach_type": "pitch",
+      "market": "EN",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": "Fixture Editor",
+          "email": "editor@fixture-editorial.example.com",
+          "needs_lookup": false,
+          "role": "editorial",
+          "email_candidate": "editor@fixture-editorial.example.com",
+          "candidate_source": "fixture",
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "personalization_hook": "I read your M8 reliability piece last month",
+      "note": "FIXTURE — test record only. Not a real prospect.",
+      "fetch_attempts": 0
+    }
+  ]
+}

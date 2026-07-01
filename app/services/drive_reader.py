@@ -135,14 +135,19 @@ def _extract_meta_description(html: str) -> Optional[str]:
 
     Convention: a paragraph whose text content starts with 'Meta:' or
     'Meta Description:' (case-insensitive), as written by the seo-blog-writer skill.
+
+    Strips inner HTML tags (e.g. <span> added by Google Drive's HTML export)
+    before matching, so the prefix check works regardless of export formatting.
     """
-    pattern = re.compile(
-        r"<p[^>]*>\s*(?:meta\s*description\s*:?\s*|meta\s*:?\s*)(.*?)</p>",
-        re.DOTALL | re.IGNORECASE,
+    prefix = re.compile(
+        r"(?:meta\s*description\s*:?\s*|meta\s*:?\s*)(.*)",
+        re.IGNORECASE | re.DOTALL,
     )
-    m = pattern.search(html)
-    if m:
-        return _strip_tags(m.group(1)).strip()
+    for m in re.finditer(r"<p[^>]*>(.*?)</p>", html, re.DOTALL | re.IGNORECASE):
+        text = _strip_tags(m.group(1)).strip()
+        hit = prefix.match(text)
+        if hit:
+            return hit.group(1).strip()
     return None
 
 
@@ -156,7 +161,9 @@ def _extract_faq(html: str) -> list:
     if not faq_section:
         return []
     section_html = faq_section.group(1)
-    questions = re.findall(r"<h3[^>]*>(.*?)</h3>", section_html, re.DOTALL | re.IGNORECASE)
+    questions = re.findall(r"<h[34][^>]*>(.*?)</h[34]>", section_html, re.DOTALL | re.IGNORECASE)
+    if not questions and "<h" in section_html.lower():
+        raise ValueError("FAQ section present but no questions extracted — check heading regex in _extract_faq")
     answers = re.findall(r"<p[^>]*>(.*?)</p>", section_html, re.DOTALL | re.IGNORECASE)
     faq = []
     for i, q in enumerate(questions):

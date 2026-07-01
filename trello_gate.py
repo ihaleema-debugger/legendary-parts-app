@@ -115,15 +115,23 @@ def _ensure_poller_running():
         logger.warning("Could not auto-start trello_poller.py: %s", e)
 
 
-def poll_once(state=None, client=None):
-    """Check all pending cards; trigger translation for any with both validations done."""
+def poll_once(state=None, client=None, card_id=None):
+    """Check pending cards; trigger translation for any with both validations done.
+
+    If card_id is given, only that specific card is checked.
+    """
     if state is None:
         state = TrelloState()
     if client is None:
         client = TrelloClient()
         client.resolve_list_ids()
 
-    pending = state.get_pending()
+    if card_id:
+        row = state.get_by_card_id(card_id)
+        pending = [row] if row and row["status"] == "pending" else []
+    else:
+        pending = state.get_pending()
+
     if not pending:
         logger.info("poll_once: 0 pending cards")
         return

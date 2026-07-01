@@ -260,6 +260,16 @@ def orchestrate(doc_id: str, dry_run: bool = False, single_lang: Optional[str] =
                     "Shopify without the FR source doc. Resolve the FR translation "
                     "failure first."
                 )
+            assert fr_result["doc_id"] != doc_id, \
+                f"[Stage 11] REFUSING to publish source doc as primary: {doc_id}"
+            # Persist fr_doc_id so the standalone publisher can find it later
+            try:
+                from app.services.trello_state import TrelloState as _TrelloState
+                _TrelloState().save_fr_doc_id(doc_id, fr_result["doc_id"])
+                print(f"[Stage 11] fr_doc_id persisted to DB: {fr_result['doc_id']!r}")
+            except Exception as _db_err:
+                print(f"[Stage 11] Warning: could not persist fr_doc_id — {_db_err}")
+            print(f"[Stage 11] publish_blog_post → doc_id={fr_result['doc_id']!r}")
             _article, _source_locale = publish_blog_post(fr_result["doc_id"])
             _source_article_id = _article["id"]
             _blog_stem = original_slug
@@ -271,7 +281,8 @@ def orchestrate(doc_id: str, dry_run: bool = False, single_lang: Optional[str] =
             )
             _ok_count = sum(1 for v in _trans_result.values() if v.get("status") == "ok")
             print(
-                f"[Stage 11] Shopify draft published (article_id={_source_article_id}), "
+                f"[Stage 11] Shopify draft published locale={_source_locale!r} "
+                f"article_id={_source_article_id}, "
                 f"{_ok_count} locales registered for doc_id={doc_id}"
             )
         except Exception as _e:

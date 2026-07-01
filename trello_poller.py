@@ -34,7 +34,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run(interval_minutes):
+def run(interval_minutes, card_id=None):
     state = TrelloState()
     client = TrelloClient()
 
@@ -44,12 +44,16 @@ def run(interval_minutes):
         print(f"Error: {e}")
         sys.exit(1)
 
-    print(f"Trello poller started — checking every {interval_minutes} minute(s). Press Ctrl+C to stop.")
-    logger.info("Poller started with interval=%dm", interval_minutes)
+    if card_id:
+        print(f"Trello poller started — watching card {card_id} every {interval_minutes} minute(s). Press Ctrl+C to stop.")
+        logger.info("Poller started with interval=%dm, card_id=%s", interval_minutes, card_id)
+    else:
+        print(f"Trello poller started — checking every {interval_minutes} minute(s). Press Ctrl+C to stop.")
+        logger.info("Poller started with interval=%dm", interval_minutes)
 
     while True:
         try:
-            poll_once(state, client)
+            poll_once(state, client, card_id=card_id)
         except Exception as e:
             logger.warning("poll_once raised an unexpected error: %s", e)
 
@@ -64,10 +68,15 @@ def main():
         default=None,
         help="Polling interval in minutes (overrides TRELLO_POLLING_INTERVAL_MINUTES)",
     )
+    parser.add_argument(
+        "--card-id",
+        default=None,
+        help="Only poll this specific Trello card ID (skips all other pending cards)",
+    )
     args = parser.parse_args()
 
     interval = args.interval or int(os.environ.get("TRELLO_POLLING_INTERVAL_MINUTES", "5"))
-    run(interval)
+    run(interval, card_id=args.card_id)
 
 
 if __name__ == "__main__":

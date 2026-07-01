@@ -1,0 +1,620 @@
+"""Outreach poller — cadence daemon.
+
+Detects when a Gmail draft is gone (founder sent it) and queues the next follow-up
+as a new draft. Every email — initial and follow-ups — goes through the same cycle:
+draft sitting in Gmail → gone → advance step → queue the next touch if due.
+
+No send path. drafts().create() only — messages.send is never called.
+"""
+
+import argparse
+import base64
+import json
+import logging
+import sys
+import tempfile
+from datetime import datetime, timedelta, timezone
+from email.mime.text import MIMEText
+from pathlib import Path
+from typing import Optional, Tuple
+
+from googleapiclient.errors import HttpError
+
+from outreach.gmail_client import get_gmail_service
+from outreach.outreach_state import OutreachState
+
+logger = logging.getLogger(__name__)
+
+_DIR               = Path(__file__).resolve().parent
+_DEFAULT_TOKEN     = _DIR / "secrets" / "token_haleema.json"
+_DEFAULT_SENDER    = _DIR / "config"  / "sender.json"
+_DEFAULT_TEMPLATES = _DIR / "config"  / "templates.json"
+
+# ── cadence thresholds ────────────────────────────────────────────────────────
+# Days elapsed from the day-0 anchor (>= threshold means the touch is due).
+# "Past the line" semantics — no upper bound; nothing is skipped if poller misses a day.
+FOLLOWUP_2_MIN_DAY = 3
+FOLLOWUP_3_MIN_DAY = 8
+BREAKUP_MIN_DAY    = 14
+
+# ── send_status vocabulary ────────────────────────────────────────────────────
+SEND_STATUS_IN_CADENCE = "in-cadence"   # cadence active; follow-ups will be drafted
+SEND_STATUS_COMPLETE   = "complete"     # breakup sent; nothing further
+SEND_STATUS_DECLINED   = "declined"     # draft trashed or hard-deleted; cadence never started
+
+# ── cadence map: cadence_step → (template_key, min_day) ──────────────────────
+# step represents emails SENT so far; map gives the key for the NEXT touch.
+_CADENCE = {
+    1: ("followup_2", FOLLOWUP_2_MIN_DAY),
+    2: ("followup_3", FOLLOWUP_3_MIN_DAY),
+    3: ("breakup",    BREAKUP_MIN_DAY),
+}
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _days_elapsed(iso_str: str) -> int:
+    """Integer days between the UTC ISO timestamp and now."""
+    anchor = datetime.fromisoformat(iso_str)
+    if anchor.tzinfo is None:
+        anchor = anchor.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - anchor).days
+
+
+def _draft_state(service, draft_id: str) -> str:
+    """Returns 'pending', 'sent', 'trashed', or 'gone'.
+
+    Gmail returns HTTP 200 for sent and trashed drafts with changed labelIds —
+    a 404 only occurs when the draft was hard-deleted outside normal send/trash flows.
+    """
+    try:
+        result = service.users().drafts().get(userId="me", id=draft_id).execute()
+        labels = result.get("message", {}).get("labelIds", [])
+        if "SENT" in labels:
+            return "sent"
+        if "TRASH" in labels:
+            return "trashed"
+        return "pending"
+    except HttpError as exc:
+        if exc.resp.status == 404:
+            return "gone"
+        raise
+
+
+def _render(
+    templates: dict, prospect: dict, sender: dict, template_key: str
+) -> Tuple[str, str]:
+    """Return (subject, body). Raises KeyError loud if template key is missing."""
+    lane = prospect.get("lane")
+    lang = (prospect.get("language") or "en").lower()[:2]
+    name = (prospect.get("contact_name") or "").strip()
+    no_name_greeting = {"en": "Hi there,", "fr": "Bonjour,", "de": "Hallo,"}
+    if name:
+        greeting = {"en": f"Hi {name},", "fr": f"Bonjour {name},", "de": f"Hallo {name},"}[lang]
+    else:
+        greeting = no_name_greeting[lang]
+    locale_tpl = templates[f"lane_{lane}"][template_key][lang]   # KeyError = fail loud
+    ctx = {
+        "org":                  prospect.get("organisation", ""),
+        "greeting":             greeting,
+        "contact_name":         prospect.get("contact_name") or "",
+        "sender_name":          sender.get("name", ""),
+        "sender_title":         sender.get("title", ""),
+        "sender_email":         sender.get("email", ""),
+        "sender_linkedin":      sender.get("linkedin_url", ""),
+        "personalization_hook": prospect.get("personalisation_facts") or "",
+        "artefact_url":         prospect.get("artefact_drive_link") or "",
+    }
+    return locale_tpl["subject"].format(**ctx), locale_tpl["body"].format(**ctx)
+
+
+def _create_draft(service, to: str, subject: str, body: str, thread_id: str) -> dict:
+    """Create a Gmail draft replying into thread_id. Returns the full API result."""
+    mime          = MIMEText(body, "plain")
+    mime["to"]      = to
+    mime["subject"] = subject
+    raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
+    return service.users().drafts().create(
+        userId="me",
+        body={"message": {"raw": raw, "threadId": thread_id}},
+    ).execute()
+
+
+# ── core ──────────────────────────────────────────────────────────────────────
+
+def run_poll(
+    token_path=None,
+    db_path=None,
+    templates_path=None,
+    sender_path=None,
+    _service=None,      # injectable for tests; never set in production
+) -> dict:
+    """Detect sent drafts and queue follow-up drafts for all active prospects.
+
+    Returns {checked, advanced, prepared, skipped, errors}.
+    No send path: drafts().create() only — messages.send is never called.
+    """
+    token_path     = Path(token_path)     if token_path     else _DEFAULT_TOKEN
+    templates_path = Path(templates_path) if templates_path else _DEFAULT_TEMPLATES
+    sender_path    = Path(sender_path)    if sender_path    else _DEFAULT_SENDER
+
+    service   = _service or get_gmail_service(token_path=token_path)
+    state     = OutreachState(db_path=db_path)
+    templates = (
+        json.loads(templates_path.read_text(encoding="utf-8"))
+        if templates_path.exists() else {}
+    )
+    sender = (
+        json.loads(sender_path.read_text(encoding="utf-8"))
+        if sender_path.exists() else {}
+    )
+
+    # Include prospects with a draft waiting AND prospects mid-cadence with no draft yet
+    # (the latter have sent their last email and are waiting for the next due date).
+    to_watch = [
+        p for p in state.get_all()
+        if (p.get("gmail_draft_id") or p.get("send_status") == SEND_STATUS_IN_CADENCE)
+        and p.get("send_status") not in (SEND_STATUS_COMPLETE, SEND_STATUS_DECLINED)
+    ]
+
+    stats = dict(checked=0, advanced=0, prepared=0, skipped=0, retired=0, errors=0)
+
+    for prospect in to_watch:
+        domain = prospect["domain"]
+        step   = prospect.get("cadence_step") or 0
+
+        if step >= 4:
+            stats["skipped"] += 1
+            continue
+
+        stats["checked"] += 1
+
+        try:
+            draft_id = prospect.get("gmail_draft_id")
+
+            # ── Phase A: draft is waiting — what did the founder do with it? ─────
+            if draft_id:
+                label = _draft_state(service, draft_id)
+
+                if label == "pending":
+                    stats["skipped"] += 1
+                    continue                          # still in drafts folder, check next run
+
+                if label in ("trashed", "gone"):
+                    state.upsert_prospect(domain,
+                                          send_status=SEND_STATUS_DECLINED,
+                                          gmail_draft_id=None)
+                    stats["retired"] += 1
+                    if label == "trashed":
+                        logger.info("retired domain=%r reason=trashed (draft deleted without sending)", domain)
+                    else:
+                        logger.info("retired domain=%r reason=gone (draft 404, hard-deleted)", domain)
+                    continue
+
+                # label == "sent": founder sent it → advance step
+                new_step = step + 1
+                updates  = {"cadence_step": new_step, "gmail_draft_id": None}
+
+                if step == 0:
+                    # Initial email just sent: set day-0 anchor ONCE, never moved again.
+                    updates["last_action_date"] = _utcnow()
+                    updates["send_status"]      = SEND_STATUS_IN_CADENCE
+
+                if new_step >= 4:
+                    updates["send_status"] = SEND_STATUS_COMPLETE
+
+                state.upsert_prospect(domain, **updates)
+                stats["advanced"] += 1
+                logger.info("advanced domain=%r step=%d→%d", domain, step, new_step)
+
+                # Refresh local view so Phase B sees the updated state immediately.
+                prospect = {**prospect, **updates}
+                step     = new_step
+                draft_id = None
+
+            # ── Phase B: is the next touch due? ──────────────────────────────────
+            if (
+                prospect.get("send_status") == SEND_STATUS_IN_CADENCE
+                and not prospect.get("gmail_draft_id")
+                and step < 4
+            ):
+                template_key, min_day = _CADENCE.get(step, (None, None))
+                if template_key is None:
+                    stats["skipped"] += 1
+                    continue
+
+                day0    = prospect.get("last_action_date")
+                elapsed = _days_elapsed(day0) if day0 else 0
+
+                if elapsed < min_day:
+                    stats["skipped"] += 1
+                    continue                          # not yet due
+
+                # Due — prepare the next touch as a draft only.
+                contact_email = prospect.get("contact_email")
+                if not contact_email:
+                    raise ValueError(f"no contact_email on domain={domain!r}")
+
+                thread_id     = prospect.get("gmail_thread_id") or ""
+                subject, body = _render(templates, prospect, sender, template_key)
+                result        = _create_draft(service, contact_email, subject, body, thread_id)
+
+                state.upsert_prospect(
+                    domain,
+                    gmail_draft_id  = result["id"],
+                    gmail_thread_id = result["message"]["threadId"],
+                )
+                logger.info(
+                    "prepared domain=%r template=%r draft=%s",
+                    domain, template_key, result["id"],
+                )
+                stats["prepared"] += 1
+
+        except Exception as exc:
+            logger.error("domain=%r error=%r", domain, exc, exc_info=True)
+            stats["errors"] += 1
+
+    return stats
+
+
+# ── tests ─────────────────────────────────────────────────────────────────────
+
+def _run_tests() -> None:
+    print("Running poller tests...")
+
+    _FAKE_TEMPLATES = {
+        "lane_1": {
+            "followup_2": {"en": {"subject": "FU2 {org}", "body": "FU2 body {org}. {sender_name}"}},
+            "followup_3": {"en": {"subject": "FU3 {org}", "body": "FU3 body {org}. {sender_name}"}},
+            "breakup":    {"en": {"subject": "Breakup {org}", "body": "Breakup {org}. {sender_name}"}},
+        }
+    }
+    _FAKE_SENDER = {
+        "name": "Haleema Naz", "email": "h@lp.com",
+        "linkedin_url": "https://linkedin.com/in/h", "title": "Test",
+    }
+
+    # ── fake Gmail service ────────────────────────────────────────────────────
+
+    class _FakeResp:
+        def __init__(self, status):
+            self.status = status
+            self.reason = "Error"
+
+    class _FakeReq:
+        def __init__(self, result=None, err=None):
+            self._result, self._err = result, err
+
+        def execute(self):
+            if self._err:
+                raise self._err
+            return self._result
+
+    class _FakeDrafts:
+        def __init__(self, svc):
+            self._svc = svc
+
+        def get(self, userId, id):
+            if id not in self._svc.existing:
+                return _FakeReq(err=HttpError(resp=_FakeResp(404), content=b"Not Found"))
+            labels = self._svc.existing[id]
+            return _FakeReq(result={"id": id, "message": {"labelIds": labels}})
+
+        def create(self, userId, body):
+            new_id = f"fake-{len(self._svc.created) + 1}"
+            self._svc.existing[new_id] = ["DRAFT"]
+            self._svc.created.append(new_id)
+            thread = body.get("message", {}).get("threadId", "fake-thread")
+            return _FakeReq(result={"id": new_id, "message": {"threadId": thread}})
+
+    class _FakeUsers:
+        def __init__(self, svc):
+            self._svc = svc
+
+        def drafts(self):
+            return _FakeDrafts(self._svc)
+
+    class _FakeService:
+        def __init__(self, existing=None):
+            # existing: dict[draft_id → labelIds list]
+            # Also accepts a plain set for backward compat → all treated as ["DRAFT"]
+            if isinstance(existing, set):
+                self.existing = {k: ["DRAFT"] for k in existing}
+            else:
+                self.existing = dict(existing or {})
+            self.created = []
+
+        def users(self):
+            return _FakeUsers(self)
+
+        def mark_sent(self, draft_id):
+            """Simulate the founder sending a draft via the Gmail UI."""
+            if draft_id in self.existing:
+                self.existing[draft_id] = ["SENT"]
+
+        def remove(self, draft_id):
+            """Simulate hard deletion of a draft (subsequent get returns 404)."""
+            self.existing.pop(draft_id, None)
+
+    # ── test helpers ──────────────────────────────────────────────────────────
+
+    def make_db(tmp_dir, **fields) -> Path:
+        db = Path(tmp_dir) / "test.db"
+        OutreachState(db_path=db).upsert_prospect("test.com", status="approved", **fields)
+        return db
+
+    def get_record(db) -> dict:
+        return OutreachState(db_path=db).get_by_domain("test.com")
+
+    def write_json(tmp_dir, name, data) -> Path:
+        p = Path(tmp_dir) / name
+        p.write_text(json.dumps(data), encoding="utf-8")
+        return p
+
+    # ── T1: draft still exists → record unchanged ─────────────────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
+        svc = _FakeService(existing={"d-001"})
+        before = get_record(db)
+        run_poll(_service=svc, db_path=db)
+        after  = get_record(db)
+        assert after["cadence_step"]    == before["cadence_step"],    \
+            f"T1 cadence_step changed: {after['cadence_step']}"
+        assert after["send_status"]     == before["send_status"],     \
+            f"T1 send_status changed: {after['send_status']}"
+        assert after["last_action_date"] == before["last_action_date"], \
+            f"T1 last_action_date changed"
+        assert len(svc.created) == 0, f"T1 draft created: {svc.created}"
+        print("  PASS  [T1] draft still exists → record unchanged")
+
+    # ── T2: labelIds=['SENT'], first detection → day-0 stamped, cadence opened ──
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
+        svc = _FakeService(existing={"d-001": ["SENT"]})   # founder sent it
+        run_poll(_service=svc, db_path=db)
+        after = get_record(db)
+        assert after["send_status"]     == SEND_STATUS_IN_CADENCE, \
+            f"T2 send_status={after['send_status']!r}"
+        assert after["cadence_step"]    == 1,         f"T2 step={after['cadence_step']}"
+        assert after["gmail_draft_id"]  is None,      f"T2 draft_id={after['gmail_draft_id']!r}"
+        assert after["last_action_date"] is not None, "T2 last_action_date not stamped"
+        print("  PASS  [T2] labelIds=['SENT'] → advanced, send_status='in-cadence', day-0 stamped")
+
+    # ── T3: in-cadence, not yet due → no draft prepared ───────────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        day0 = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        db  = make_db(tmp,
+            cadence_step=1, send_status=SEND_STATUS_IN_CADENCE,
+            last_action_date=day0, gmail_thread_id="t-001", contact_email="a@b.com",
+        )
+        svc = _FakeService()
+        run_poll(_service=svc, db_path=db)
+        after = get_record(db)
+        assert len(svc.created) == 0,      f"T3 draft created when not due: {svc.created}"
+        assert after["cadence_step"] == 1,  f"T3 step changed: {after['cadence_step']}"
+        print("  PASS  [T3] in-cadence, 1 day elapsed → not due, no draft")
+
+    # ── T4: due at day 3 → FU2 prepared; cadence_step stays 1 ────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        day0 = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        db  = make_db(tmp,
+            cadence_step=1, send_status=SEND_STATUS_IN_CADENCE,
+            last_action_date=day0, gmail_thread_id="t-001",
+            contact_email="a@b.com", lane=1, language="en",
+        )
+        tp  = write_json(tmp, "templates.json", _FAKE_TEMPLATES)
+        sp  = write_json(tmp, "sender.json",    _FAKE_SENDER)
+        svc = _FakeService()
+        run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
+        after = get_record(db)
+        assert len(svc.created) == 1,         f"T4 expected 1 draft, got {len(svc.created)}"
+        assert after["cadence_step"] == 1,    f"T4 step advanced prematurely: {after['cadence_step']}"
+        assert after["gmail_draft_id"] == svc.created[0], \
+            f"T4 draft_id mismatch: {after['gmail_draft_id']!r}"
+        print("  PASS  [T4] day 3 → FU2 prepared, cadence_step still 1 (advance on send)")
+
+    # ── T5: idempotency — FU2 already prepared, re-run → no duplicate ─────────
+    with tempfile.TemporaryDirectory() as tmp:
+        day0 = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        db  = make_db(tmp,
+            cadence_step=1, send_status=SEND_STATUS_IN_CADENCE,
+            last_action_date=day0, gmail_thread_id="t-001",
+            gmail_draft_id="existing-fu2",            # FU2 already prepared
+            contact_email="a@b.com", lane=1, language="en",
+        )
+        tp  = write_json(tmp, "templates.json", _FAKE_TEMPLATES)
+        sp  = write_json(tmp, "sender.json",    _FAKE_SENDER)
+        svc = _FakeService(existing={"existing-fu2"})  # draft still in Gmail
+        run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
+        assert len(svc.created) == 0,          f"T5 duplicate draft created: {svc.created}"
+        after = get_record(db)
+        assert after["gmail_draft_id"] == "existing-fu2", \
+            f"T5 draft_id overwritten: {after['gmail_draft_id']!r}"
+        print("  PASS  [T5] idempotency: FU2 prepared, re-run → no duplicate")
+
+    # ── T6: cadence_step=4 → do nothing ──────────────────────────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, cadence_step=4, send_status=SEND_STATUS_COMPLETE)
+        svc = _FakeService()
+        before = get_record(db)
+        run_poll(_service=svc, db_path=db)
+        after  = get_record(db)
+        assert after["cadence_step"] == 4, f"T6 step changed: {after['cadence_step']}"
+        assert len(svc.created) == 0,      f"T6 draft created: {svc.created}"
+        print("  PASS  [T6] cadence_step=4 → nothing done")
+
+    # ── T7: SCOPE — 'status' column is never touched by the poller ────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
+        assert get_record(db)["status"] == "approved", "T7 fixture setup error"
+        svc = _FakeService()                           # d-001 not found → 404 → retire path
+        run_poll(_service=svc, db_path=db)
+        after_status = get_record(db)["status"]
+        assert after_status == "approved", \
+            f"T7 SCOPE FAIL: 'status' changed to {after_status!r}"
+        print("  PASS  [T7] SCOPE: poller never writes 'status' column")
+
+    # ── T8: end-to-end chain ──────────────────────────────────────────────────
+    # FU2 sent → FU3 prepared; FU3 sent → breakup prepared; breakup sent → complete.
+    with tempfile.TemporaryDirectory() as tmp:
+        day0 = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
+        tp   = write_json(tmp, "templates.json", _FAKE_TEMPLATES)
+        sp   = write_json(tmp, "sender.json",    _FAKE_SENDER)
+        db   = make_db(tmp,
+            cadence_step=1, send_status=SEND_STATUS_IN_CADENCE,
+            last_action_date=day0, gmail_thread_id="t-001",
+            gmail_draft_id="fu2-id",                  # FU2 waiting, already sent
+            contact_email="a@b.com", lane=1, language="en",
+        )
+        svc = _FakeService(existing={"fu2-id": ["SENT"]})  # founder sent FU2
+
+        # Run 1: FU2 SENT → step→2; day 20 ≥ 8 → FU3 prepared immediately
+        run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
+        r = get_record(db)
+        assert r["cadence_step"] == 2,             f"T8-R1 step={r['cadence_step']}"
+        assert r["gmail_draft_id"] == svc.created[0], \
+            f"T8-R1 draft_id={r['gmail_draft_id']!r}"
+        assert r["send_status"] == SEND_STATUS_IN_CADENCE, \
+            f"T8-R1 send_status={r['send_status']!r}"
+
+        # Run 2: FU3 SENT → step→3; day 20 ≥ 14 → breakup prepared
+        svc.mark_sent(svc.created[0])
+        run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
+        r = get_record(db)
+        assert r["cadence_step"] == 3,             f"T8-R2 step={r['cadence_step']}"
+        assert r["gmail_draft_id"] == svc.created[1], \
+            f"T8-R2 breakup draft_id={r['gmail_draft_id']!r}"
+        assert r["send_status"] == SEND_STATUS_IN_CADENCE, \
+            f"T8-R2 send_status={r['send_status']!r}"
+
+        # Run 3: breakup SENT → step→4, complete
+        svc.mark_sent(svc.created[1])
+        run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
+        r = get_record(db)
+        assert r["cadence_step"]  == 4,                f"T8-R3 step={r['cadence_step']}"
+        assert r["send_status"]   == SEND_STATUS_COMPLETE, \
+            f"T8-R3 send_status={r['send_status']!r}"
+        assert r["gmail_draft_id"] is None,            f"T8-R3 draft_id={r['gmail_draft_id']!r}"
+        print("  PASS  [T8] end-to-end chain: FU2→FU3→breakup→complete (step=4)")
+
+    # ── T9: labelIds=['DRAFT'] → pending → skipped, record unchanged ──────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
+        svc = _FakeService(existing={"d-001": ["DRAFT"]})
+        before = get_record(db)
+        run_poll(_service=svc, db_path=db)
+        after = get_record(db)
+        assert after["cadence_step"]     == before["cadence_step"],     "T9 cadence_step changed"
+        assert after["send_status"]      == before["send_status"],      "T9 send_status changed"
+        assert after["last_action_date"] == before["last_action_date"], "T9 last_action_date changed"
+        assert after["gmail_draft_id"]   == "d-001",                    "T9 draft_id cleared"
+        print("  PASS  [T9] labelIds=['DRAFT'] → pending → skipped, record unchanged")
+
+    # ── T10: labelIds=['SENT'] → advanced, day-0 stamped, cadence opened ──────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
+        svc = _FakeService(existing={"d-001": ["SENT"]})
+        run_poll(_service=svc, db_path=db)
+        after = get_record(db)
+        assert after["send_status"]      == SEND_STATUS_IN_CADENCE, \
+            f"T10 send_status={after['send_status']!r}"
+        assert after["cadence_step"]     == 1,    f"T10 step={after['cadence_step']}"
+        assert after["gmail_draft_id"]   is None, f"T10 draft_id={after['gmail_draft_id']!r}"
+        assert after["last_action_date"] is not None, "T10 last_action_date not stamped"
+        print("  PASS  [T10] labelIds=['SENT'] → advanced, day-0 stamped, send_status='in-cadence'")
+
+    # ── T11: labelIds=['DRAFT','TRASH'] → trashed → retired, declined ─────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
+        svc = _FakeService(existing={"d-001": ["DRAFT", "TRASH"]})
+        run_poll(_service=svc, db_path=db)
+        after = get_record(db)
+        assert after["send_status"]    == SEND_STATUS_DECLINED, \
+            f"T11 send_status={after['send_status']!r}"
+        assert after["gmail_draft_id"] is None, f"T11 draft_id still set: {after['gmail_draft_id']!r}"
+        assert after["cadence_step"]   == 0,    f"T11 cadence_step advanced: {after['cadence_step']}"
+        assert after["last_action_date"] is None, "T11 last_action_date wrongly stamped"
+        print("  PASS  [T11] labelIds=['DRAFT','TRASH'] → trashed → retired, send_status='declined'")
+
+    # ── T12: HttpError 404 → gone → retired, declined ─────────────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
+        svc = _FakeService()                           # d-001 not in existing → 404 → gone
+        run_poll(_service=svc, db_path=db)
+        after = get_record(db)
+        assert after["send_status"]    == SEND_STATUS_DECLINED, \
+            f"T12 send_status={after['send_status']!r}"
+        assert after["gmail_draft_id"] is None, f"T12 draft_id still set"
+        assert after["cadence_step"]   == 0,    f"T12 cadence_step advanced: {after['cadence_step']}"
+        print("  PASS  [T12] HttpError 404 → gone → retired, send_status='declined'")
+
+    # ── T13: HttpError 500 → _draft_state re-raises; outer handler counts error ─
+    with tempfile.TemporaryDirectory() as tmp:
+        db = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
+
+        class _500Drafts:
+            def get(self, userId, id):
+                return _FakeReq(err=HttpError(resp=_FakeResp(500), content=b"Server Error"))
+            def create(self, userId, body):
+                raise AssertionError("create must not be called on a 500 path")
+
+        class _500Users:
+            def drafts(self): return _500Drafts()
+
+        class _500Service:
+            def users(self): return _500Users()
+
+        # Verify _draft_state itself re-raises the 500
+        raised_500 = False
+        try:
+            _draft_state(_500Service(), "d-001")
+        except HttpError as exc:
+            raised_500 = (exc.resp.status == 500)
+        assert raised_500, "T13 _draft_state did not re-raise HttpError 500"
+
+        # Verify run_poll counts it as an error (outer per-prospect guard)
+        stats = run_poll(_service=_500Service(), db_path=db)
+        assert stats["errors"] == 1, f"T13 expected errors=1, got {stats['errors']}"
+        print("  PASS  [T13] HttpError 500 → _draft_state re-raises; outer handler counts as error")
+
+    print(f"\nAll 13 poller tests passed.")
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    if "--test" in sys.argv:
+        _run_tests()
+        sys.exit(0)
+
+    parser = argparse.ArgumentParser(
+        description="Outreach cadence poller: detect sent drafts and queue follow-ups."
+    )
+    parser.add_argument("--db",        help="path to outreach_state.db")
+    parser.add_argument("--token",     help="path to Gmail token JSON")
+    parser.add_argument("--templates", help="path to templates.json")
+    parser.add_argument("--sender",    help="path to sender.json")
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+
+    stats = run_poll(
+        token_path     = args.token,
+        db_path        = args.db,
+        templates_path = args.templates,
+        sender_path    = args.sender,
+    )
+    print(f"  checked  : {stats['checked']}")
+    print(f"  advanced : {stats['advanced']}")
+    print(f"  prepared : {stats['prepared']}")
+    print(f"  retired  : {stats['retired']}")
+    print(f"  skipped  : {stats['skipped']}")
+    print(f"  errors   : {stats['errors']}")
+
+
+if __name__ == "__main__":
+    main()

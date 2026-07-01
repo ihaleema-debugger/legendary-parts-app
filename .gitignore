@@ -19,3 +19,15 @@ venv/
 
 # macOS
 .DS_Store
+
+# Live state databases (not source)
+*.db
+
+# Session tokens
+semrush_session.json
+
+# Logs
+*.log
+logs/
+poller.log
+poller.err.log
