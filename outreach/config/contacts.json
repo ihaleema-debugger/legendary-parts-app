@@ -1190,7 +1190,8 @@
       "action_url": null,
       "note": "Reason: REL-EDITORIAL. Angle: Pitch a Harley feature/expert quote; large outlet, find editorial contact",
       "fetch_attempts": 0,
-      "personalization_hook": "Owners across Europe are facing a growing challenge: finding replacement parts for vintage Harley models."
+      "personalization_hook": "Owners across Europe are facing a growing challenge: finding replacement parts for vintage Harley models.",
+      "reason_code": "REL-EDITORIAL"
     },
     {
       "domain": "pistonheads.com",
@@ -1214,7 +1215,8 @@
       "action_url": null,
       "note": "Reason: REL-EDITORIAL. Angle: Relevant auto media — pitch editorial/sponsored feature; email on file (adverts@)",
       "fetch_attempts": 0,
-      "personalization_hook": "The biggest challenge for modern classic motorcycle owners often begins after production ends."
+      "personalization_hook": "The biggest challenge for modern classic motorcycle owners often begins after production ends.",
+      "reason_code": "REL-EDITORIAL"
     },
     {
       "domain": "ridermagazine.com",
@@ -1238,7 +1240,8 @@
       "action_url": null,
       "note": "Reason: REL-EDITORIAL. Angle: Core moto magazine — pitch Harley feature/parts review; email on file (find editorial contact)",
       "fetch_attempts": 0,
-      "personalization_hook": "Understanding common motorcycle failures can help riders avoid breakdowns and unexpected roadside stops."
+      "personalization_hook": "Understanding common motorcycle failures can help riders avoid breakdowns and unexpected roadside stops.",
+      "reason_code": "REL-EDITORIAL"
     },
     {
       "domain": "bikesure.co.uk",
@@ -1262,7 +1265,8 @@
       "action_url": null,
       "note": "Reason: REL-EDITORIAL. Angle: UK moto-insurance blog — pitch guest/resource link on rider content; find contact",
       "fetch_attempts": 0,
-      "personalization_hook": "Rising motorcycle prices are changing how riders approach maintenance, repairs, and long-term ownership."
+      "personalization_hook": "Rising motorcycle prices are changing how riders approach maintenance, repairs, and long-term ownership.",
+      "reason_code": "REL-EDITORIAL"
     },
     {
       "domain": "topgear.es",
@@ -1286,7 +1290,8 @@
       "action_url": null,
       "note": "Reason: REL-EDITORIAL. Angle: Top Gear Spain, EU reach — pitch a moto feature; email on file",
       "fetch_attempts": 0,
-      "personalization_hook": "Demand for discontinued motorcycle parts highlights the rise of restoration and long-term ownership."
+      "personalization_hook": "Demand for discontinued motorcycle parts highlights the rise of restoration and long-term ownership.",
+      "reason_code": "REL-EDITORIAL"
     },
     {
       "domain": "adventurebikerider.com",
@@ -1310,7 +1315,8 @@
       "action_url": null,
       "note": "Reason: REL-EDITORIAL. Angle: ADV-moto magazine — pitch Harley/touring feature or parts resource; find contact",
       "fetch_attempts": 0,
-      "personalization_hook": "Preventive maintenance remains one of the most effective ways to avoid roadside failures."
+      "personalization_hook": "Preventive maintenance remains one of the most effective ways to avoid roadside failures.",
+      "reason_code": "REL-EDITORIAL"
     },
     {
       "domain": "iamabiker.com",
@@ -1334,7 +1340,8 @@
       "action_url": null,
       "note": "Reason: REL-EDITORIAL. Angle: Motorcycle blog — pitch Harley feature/parts content; email on file",
       "fetch_attempts": 0,
-      "personalization_hook": "A simple component failure can quickly reveal how difficult some motorcycle parts are to find."
+      "personalization_hook": "A simple component failure can quickly reveal how difficult some motorcycle parts are to find.",
+      "reason_code": "REL-EDITORIAL"
     },
     {
       "domain": "taketotheroad.co.uk",
@@ -1358,7 +1365,8 @@
       "action_url": null,
       "note": "Reason: REL-EDITORIAL. Angle: Classic-motoring blog (cars & bikes) — pitch a classic-Harley feature; email on file",
       "fetch_attempts": 0,
-      "personalization_hook": "Experienced riders know that successful tours begin with careful mechanical preparation."
+      "personalization_hook": "Experienced riders know that successful tours begin with careful mechanical preparation.",
+      "reason_code": "REL-EDITORIAL"
     },
     {
       "domain": "thebikerguide.co.uk",
@@ -1382,7 +1390,233 @@
       "action_url": null,
       "note": "Reason: REL-DIRECTORY. Angle: UK biker directory/guide — submit Legendary for a listing; find contact",
       "fetch_attempts": 0,
-      "personalization_hook": "The longevity of older motorcycles often depends on access to increasingly scarce replacement parts"
+      "personalization_hook": "The longevity of older motorcycles often depends on access to increasingly scarce replacement parts",
+      "reason_code": "REL-DIRECTORY"
+    },
+    {
+      "domain": "militaryautosource.com",
+      "organisation": "Militaryautosource",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "info@militaryautosource.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: pitch Harley gear/apparel content for military stationed across Europe (DE/UK/BE bases); email on file",
+      "fetch_attempts": 0,
+      "personalization_hook": "Since you help US personnel ship vehicles home, a piece on keeping a Harley running while stationed in Europe could fit your readers well.",
+      "reason_code": "REL-EDITORIAL"
+    },
+    {
+      "domain": "topspeed.com",
+      "organisation": "Topspeed",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "legal@valnetinc.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: pitch a moto parts review/feature to Valnet's TopSpeed; email on file is Valnet's legal contact, may need to find the actual editor",
+      "fetch_attempts": 0,
+      "personalization_hook": "I'd like to offer TopSpeed a data-backed piece on genuine versus aftermarket Harley parts, drawn from our European catalogue.",
+      "reason_code": "REL-EDITORIAL"
+    },
+    {
+      "domain": "thunderbike.com",
+      "organisation": "Thunderbike",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "info@thunderbike.de",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: SUPPLIER. Angle: German custom Harley parts manufacturer; explore a co-marketing or stockist link; email on file",
+      "fetch_attempts": 0,
+      "personalization_hook": "Thunderbike's custom parts are known across Europe ; I'd like to explore a stockist or co-marketing arrangement with Legendary Parts.",
+      "reason_code": "SUPPLIER"
+    },
+    {
+      "domain": "thunderbike.de",
+      "organisation": "Thunderbike",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "info@thunderbike.de",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: SUPPLIER. Angle: same brand as thunderbike.com (German custom Harley parts manufacturer); email on file",
+      "fetch_attempts": 0,
+      "personalization_hook": "Thunderbike genießt europaweit einen exzellenten Ruf ; ich würde gern eine Vertriebs- oder Kooperationspartnerschaft mit Legendary Parts ausloten.",
+      "reason_code": "SUPPLIER"
+    },
+    {
+      "domain": "bigtwin.nl",
+      "organisation": "Bigtwin",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "info@bigtwin.nl",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: Dutch custom Harley-Davidson magazine - pitch a build feature or product review; email on file",
+      "fetch_attempts": 0,
+      "personalization_hook": "BigTwin is the Dutch home of custom Harley culture, so I'd like to offer a build feature drawn from our workshop.",
+      "reason_code": "REL-EDITORIAL"
+    },
+    {
+      "domain": "autoevolution.com",
+      "organisation": "Autoevolution",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "editorial@autoevolution.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: major international auto/moto news site - pitch a Harley parts feature or review; find contact",
+      "fetch_attempts": 0,
+      "personalization_hook": "For AutoEvolution's motorcycle desk, I'd like to offer a piece on spotting genuine versus fake Harley parts, built from our catalogue data.",
+      "reason_code": "REL-EDITORIAL"
+    },
+    {
+      "domain": "moto-vision.com",
+      "organisation": "Moto Vision",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "contact@moto-vision.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: French motorcycle parts/accessories retailer - pitch a product feature or partnership; find contact",
+      "fetch_attempts": 0,
+      "personalization_hook": "J'aimerais proposer à Moto-Vision un comparatif pièces d'origine et adaptables Harley, nourri par notre catalogue européen et notre atelier.",
+      "reason_code": "REL-EDITORIAL"
+    },
+    {
+      "domain": "amdchampionship.com",
+      "organisation": "Amdchampionship",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "showmaster@dealer-world.com",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: official World & European Championships of Custom Bike Building, Harley-Davidson partner - pitch a sponsorship/feature tie-in; find contact",
+      "fetch_attempts": 0,
+      "personalization_hook": "As home of the World Championship of Custom Bike Building, you reach exactly the builders I'd love to collaborate with on parts sourcing.",
+      "reason_code": "REL-EDITORIAL"
+    },
+    {
+      "domain": "bikershop-bittner.de",
+      "organisation": "Bikershop Bittner",
+      "lane": 3,
+      "outreach_type": "link_building",
+      "market": "multi",
+      "language": "en",
+      "proactive": true,
+      "named_contacts": [
+        {
+          "name": null,
+          "email": "info@bikershop-bittner.de",
+          "needs_lookup": false,
+          "role": null,
+          "email_candidate": null,
+          "candidate_source": null,
+          "candidate_status": "confirmed"
+        }
+      ],
+      "action_url": null,
+      "note": "Reason: REL-EDITORIAL. Angle: German Harley-Davidson customization shop (BSB Customs) - pitch a product feature or co-promo; find contact",
+      "fetch_attempts": 0,
+      "personalization_hook": "BSB Customs steht für erstklassige Umbauten ; ich würde Ihnen gern einen Beitrag zur Teileauswahl bei Custom-Projekten anbieten.",
+      "reason_code": "REL-EDITORIAL"
     }
   ]
 }

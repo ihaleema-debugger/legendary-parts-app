@@ -5,6 +5,8 @@ PUBLIC API
 run_draft(contacts_path, sender_path, artefacts_path, templates_path) -> dict
 
 Precondition gate (first failure per record wins):
+  0. lane in parked_lanes             -> block, reason "lane_parked"
+  0b. reason_code == "SUPPLIER"       -> block, reason "reason_supplier"
   1. domain is None                   -> skip,  reason "null_domain"
   2. language not in templates        -> block, reason "unsupported_language"
   3. sender.json incomplete           -> block, reason "sender_incomplete"
@@ -137,12 +139,22 @@ def _build_body(
     artefact_url: str,
     locale_tpl: dict,
     contact_name: str = "",
-) -> Tuple[str, List[str]]:
+) -> Tuple[str, str, List[str]]:
+    """Return (body, sign_off, personalisation).
+
+    If locale_tpl has a "sign_off" piece (lane 3 today), it's rendered
+    separately and NOT included in `body` — it's appended after the body at
+    send time (s6_to_gmail) but excluded from word-count validation, since
+    the 25-65 word lane-3 ceiling is meant for the pitch, not the signature.
+    Locales with no "sign_off" key (lane 1 today) are unaffected: the
+    signature stays embedded in `body` exactly as before, and sign_off
+    returns "".
+    """
     org                  = record["organisation"]
     action_url           = record.get("action_url") or ""
     personalization_hook = record.get("personalization_hook", "")
 
-    body = locale_tpl["body"].format(
+    format_kwargs = dict(
         org=org,
         contact_name=contact_name,
         sender_name=sender["name"],
@@ -153,6 +165,10 @@ def _build_body(
         sender_linkedin=sender["linkedin_url"],
         personalization_hook=personalization_hook,
     )
+
+    body = locale_tpl["body"].format(**format_kwargs)
+    sign_off_tpl = locale_tpl.get("sign_off", "")
+    sign_off = sign_off_tpl.format(**format_kwargs) if sign_off_tpl else ""
 
     personalisation: List[str] = []
     if personalization_hook and personalization_hook in body:
@@ -167,7 +183,7 @@ def _build_body(
     assert "<img" not in body_lower, "body template must not contain <img>"
     assert "1x1" not in body, "body template must not contain pixel dimensions"
 
-    return body, personalisation
+    return body, sign_off, personalisation
 
 
 # ── core ──────────────────────────────────────────────────────────────────────
@@ -214,6 +230,12 @@ def run_draft(
         if lane in parked_lanes:
             out["blocked"] += 1
             out["blocks"].append({**_base, "reason": "lane_parked"})
+            continue
+
+        # Guard C: SUPPLIER reason — never drafted, regardless of lane/priority.
+        if (record.get("reason_code") or "").strip().upper() == "SUPPLIER":
+            out["blocked"] += 1
+            out["blocks"].append({**_base, "reason": "reason_supplier"})
             continue
 
         # Gate 1: null domain — cannot draft without a known domain
@@ -271,7 +293,7 @@ def run_draft(
 
         # Build draft
         subject = _build_subject(org, locale_tpl)
-        body, personalisation = _build_body(
+        body, sign_off, personalisation = _build_body(
             record, contact, sender, artefact_url, locale_tpl,
             contact_name=contact.get("name") or "",
         )
@@ -286,6 +308,7 @@ def run_draft(
             "contact_email":         contact["email"],
             "subject":               subject,
             "body":                  body,
+            "sign_off":              sign_off,
             "language":              lang,
             "language_defaulted":    language_defaulted,
             "word_count":            wc,
@@ -738,6 +761,73 @@ def _run_tests() -> None:
         assert lane_parked_blocks == [], \
             f"T_P5b got unexpected lane_parked block: {lane_parked_blocks}"
         print("  PASS  [T_P5b] reversibility: parked_lanes=[] → lane-1 drafts normally")
+
+    # ── T_S1: reason_code="SUPPLIER", otherwise fully valid lane-3 record
+    #          → drafted=0, blocked=1, reason="reason_supplier" ──────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        supplier_contact = {
+            "domain": "thunderbike.de",
+            "organisation": "Thunderbike",
+            "lane": 3,
+            "outreach_type": "link_building",
+            "market": "multi",
+            "language": "en",
+            "proactive": True,
+            "reason_code": "SUPPLIER",
+            "named_contacts": [{
+                "name": None, "email": "info@thunderbike.de", "needs_lookup": False,
+                "role": None, "email_candidate": None, "candidate_source": None,
+                "candidate_status": "confirmed",
+            }],
+            "action_url": None,
+            "note": "Reason: SUPPLIER. Angle: German custom Harley parts manufacturer.",
+            "personalization_hook": "noticed Thunderbike's new custom parts catalogue",
+        }
+        cp, sp, ap, tp, lp = make_files(
+            tmp, [supplier_contact], _GOOD_SENDER, _GOOD_ARTEFACTS_L3, _LANE3_TEMPLATES,
+        )
+        result = run_draft(cp, sp, ap, tp, lp)
+        assert result["drafted"] == 0, f"T_S1 drafted={result['drafted']}"
+        assert result["blocked"] == 1, f"T_S1 blocked={result['blocked']}"
+        assert result["blocks"][0]["reason"] == "reason_supplier", \
+            f"T_S1 reason={result['blocks'][0]['reason']}"
+        assert result["blocks"][0]["domain"] == "thunderbike.de", \
+            f"T_S1 domain={result['blocks'][0]['domain']}"
+        print("  PASS  [T_S1] reason_code='SUPPLIER' → drafted=0, blocked=1, reason=reason_supplier")
+
+    # ── T_S2: reason_code="REL-EDITORIAL" → drafts normally (no over-match) ──
+    with tempfile.TemporaryDirectory() as tmp:
+        editorial_contact = dict(lane3_contact)
+        editorial_contact["reason_code"] = "REL-EDITORIAL"
+        cp, sp, ap, tp, lp = make_files(
+            tmp, [editorial_contact], _GOOD_SENDER, _GOOD_ARTEFACTS_L3, _LANE3_TEMPLATES,
+        )
+        result = run_draft(cp, sp, ap, tp, lp)
+        assert result["drafted"] == 1, f"T_S2 drafted={result['drafted']}"
+        reasons = [b["reason"] for b in result["blocks"]]
+        assert "reason_supplier" not in reasons, f"T_S2 unexpected block: {reasons}"
+        print("  PASS  [T_S2] reason_code='REL-EDITORIAL' → drafts normally, no over-match")
+
+    # ── T_S3: mixed batch — one SUPPLIER, one REL-EDITORIAL
+    #          → drafted=1, blocked=1, and the block is the SUPPLIER domain ──
+    with tempfile.TemporaryDirectory() as tmp:
+        supplier2 = dict(supplier_contact)
+        supplier2["domain"] = "thunderbike.com"
+        editorial2 = dict(lane3_contact)
+        editorial2["domain"] = "hdmag.com"
+        cp, sp, ap, tp, lp = make_files(
+            tmp, [supplier2, editorial2], _GOOD_SENDER, _GOOD_ARTEFACTS_L3, _LANE3_TEMPLATES,
+        )
+        result = run_draft(cp, sp, ap, tp, lp)
+        assert result["drafted"] == 1, f"T_S3 drafted={result['drafted']}"
+        assert result["blocked"] == 1, f"T_S3 blocked={result['blocked']}"
+        assert result["drafts"][0]["domain"] == "hdmag.com", \
+            f"T_S3 drafted domain={result['drafts'][0]['domain']}"
+        assert result["blocks"][0]["domain"] == "thunderbike.com", \
+            f"T_S3 blocked domain={result['blocks'][0]['domain']}"
+        assert result["blocks"][0]["reason"] == "reason_supplier", \
+            f"T_S3 reason={result['blocks'][0]['reason']}"
+        print("  PASS  [T_S3] mixed batch: SUPPLIER skipped (named), REL-EDITORIAL drafts")
 
     print("\nAll s4 tests passed.")
 
