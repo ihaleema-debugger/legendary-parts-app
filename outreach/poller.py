@@ -57,11 +57,19 @@ ACTIVE_STATES = {None, SEND_STATUS_IN_CADENCE}
 
 # ── cadence map: cadence_step → (template_key, min_day) ──────────────────────
 # step represents emails SENT so far; map gives the key for the NEXT touch.
+# Lane-3 cadence: initial pitch + one follow-up, then exhausted. followup_3
+# and breakup are intentionally absent — FOLLOWUP_3_MIN_DAY/BREAKUP_MIN_DAY
+# and their templates.json entries are left defined and untouched; they are
+# simply unreachable now, not deleted.
 _CADENCE = {
     1: ("followup_2", FOLLOWUP_2_MIN_DAY),
-    2: ("followup_3", FOLLOWUP_3_MIN_DAY),
-    3: ("breakup",    BREAKUP_MIN_DAY),
 }
+
+# One past the last scheduled step: reaching it means the cadence is done.
+# Derived from _CADENCE, not hardcoded — the only source of truth for where
+# the cadence ends. Currently 2 (initial sent → step 1; followup_2 sent →
+# step 2 → exhausted).
+_COMPLETE_STEP = max(_CADENCE, default=0) + 1
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -194,8 +202,24 @@ def run_poll(
         domain = prospect["domain"]
         step   = prospect.get("cadence_step") or 0
 
-        if step >= 4:
-            stats["skipped"] += 1
+        if step >= _COMPLETE_STEP:
+            # A row already at or past the ceiling when this cycle runs —
+            # most likely one that reached this step under a longer
+            # _CADENCE before it was trimmed. Retire it instead of
+            # stranding it: left alone, it would stay in ACTIVE_STATES
+            # (send_status never changes on its own) and keep re-entering
+            # to_watch every cycle forever, making zero Gmail calls and
+            # zero progress, silently piling up in stats['skipped'] with
+            # no way out.
+            if prospect.get("send_status") == SEND_STATUS_IN_CADENCE:
+                state.upsert_prospect(domain, send_status=SEND_STATUS_EXHAUSTED)
+                stats["retired"] += 1
+                logger.info(
+                    "retired domain=%r reason=past_cadence_ceiling step=%d (>= %d)",
+                    domain, step, _COMPLETE_STEP,
+                )
+            else:
+                stats["skipped"] += 1
             continue
 
         stats["checked"] += 1
@@ -231,7 +255,7 @@ def run_poll(
                     updates["last_action_date"] = _utcnow()
                     updates["send_status"]      = SEND_STATUS_IN_CADENCE
 
-                if new_step >= 4:
+                if new_step >= _COMPLETE_STEP:
                     updates["send_status"] = SEND_STATUS_EXHAUSTED
 
                 state.upsert_prospect(domain, **updates)
@@ -247,7 +271,7 @@ def run_poll(
             if (
                 prospect.get("send_status") == SEND_STATUS_IN_CADENCE
                 and not prospect.get("gmail_draft_id")
-                and step < 4
+                and step < _COMPLETE_STEP
             ):
                 template_key, min_day = _CADENCE.get(step, (None, None))
                 if template_key is None:
@@ -509,48 +533,50 @@ def _run_tests() -> None:
             f"T7 SCOPE FAIL: 'status' changed to {after_status!r}"
         print("  PASS  [T7] SCOPE: poller never writes 'status' column")
 
-    # ── T8: end-to-end chain ──────────────────────────────────────────────────
-    # FU2 sent → FU3 prepared; FU3 sent → breakup prepared; breakup sent → exhausted.
+    # ── T8: end-to-end chain (2-email cadence) — initial sent → step 1 →
+    #         followup_2 drafted → sent → step 2 → exhausted. One follow-up,
+    #         then stop. No third draft is ever created. ────────────────────
     with tempfile.TemporaryDirectory() as tmp:
-        day0 = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
-        tp   = write_json(tmp, "templates.json", _FAKE_TEMPLATES)
-        sp   = write_json(tmp, "sender.json",    _FAKE_SENDER)
-        db   = make_db(tmp,
-            cadence_step=1, send_status=SEND_STATUS_IN_CADENCE,
-            last_action_date=day0, gmail_thread_id="t-001",
-            gmail_draft_id="fu2-id",                  # FU2 waiting, already sent
+        tp = write_json(tmp, "templates.json", _FAKE_TEMPLATES)
+        sp = write_json(tmp, "sender.json",    _FAKE_SENDER)
+        db = make_db(tmp,
+            cadence_step=0, gmail_draft_id="initial-id", gmail_thread_id="t-000",
             contact_email="a@b.com", lane=1, language="en",
         )
-        svc = _FakeService(existing={"fu2-id": ["SENT"]})  # founder sent FU2
+        svc = _FakeService(existing={"initial-id": ["SENT"]})  # initial pitch already sent
 
-        # Run 1: FU2 SENT → step→2; day 20 ≥ 8 → FU3 prepared immediately
+        # Run 1: initial SENT → step 0→1, day-0 stamped to now — too soon for
+        # followup_2 (elapsed ≈ 0 < FOLLOWUP_2_MIN_DAY), so nothing prepared yet.
         run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
         r = get_record(db)
-        assert r["cadence_step"] == 2,             f"T8-R1 step={r['cadence_step']}"
-        assert r["gmail_draft_id"] == svc.created[0], \
-            f"T8-R1 draft_id={r['gmail_draft_id']!r}"
-        assert r["send_status"] == SEND_STATUS_IN_CADENCE, \
-            f"T8-R1 send_status={r['send_status']!r}"
+        assert r["cadence_step"] == 1, f"T8-R1 step={r['cadence_step']}"
+        assert r["send_status"]  == SEND_STATUS_IN_CADENCE, f"T8-R1 send_status={r['send_status']!r}"
+        assert r["last_action_date"] is not None, "T8-R1 day-0 not stamped"
+        assert len(svc.created) == 0, f"T8-R1 unexpected draft: {svc.created}"
 
-        # Run 2: FU3 SENT → step→3; day 20 ≥ 14 → breakup prepared
+        # Simulate FOLLOWUP_2_MIN_DAY+ days passing — same technique T4/T5 use
+        # above (seed last_action_date directly rather than waiting in real time).
+        day0_past = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
+        OutreachState(db_path=db).upsert_prospect("test.com", last_action_date=day0_past)
+
+        # Run 2: now due — followup_2 prepared.
+        run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
+        r = get_record(db)
+        assert r["cadence_step"] == 1,               f"T8-R2 step changed prematurely: {r['cadence_step']}"
+        assert len(svc.created) == 1,                f"T8-R2 expected 1 draft, got {svc.created}"
+        assert r["gmail_draft_id"] == svc.created[0], f"T8-R2 draft_id={r['gmail_draft_id']!r}"
+
+        # Run 3: followup_2 SENT → step 1→2 → exhausted. No third draft.
         svc.mark_sent(svc.created[0])
         run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
         r = get_record(db)
-        assert r["cadence_step"] == 3,             f"T8-R2 step={r['cadence_step']}"
-        assert r["gmail_draft_id"] == svc.created[1], \
-            f"T8-R2 breakup draft_id={r['gmail_draft_id']!r}"
-        assert r["send_status"] == SEND_STATUS_IN_CADENCE, \
-            f"T8-R2 send_status={r['send_status']!r}"
-
-        # Run 3: breakup SENT → step→4, exhausted
-        svc.mark_sent(svc.created[1])
-        run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
-        r = get_record(db)
-        assert r["cadence_step"]  == 4,                f"T8-R3 step={r['cadence_step']}"
-        assert r["send_status"]   == SEND_STATUS_EXHAUSTED, \
-            f"T8-R3 send_status={r['send_status']!r}"
-        assert r["gmail_draft_id"] is None,            f"T8-R3 draft_id={r['gmail_draft_id']!r}"
-        print("  PASS  [T8] end-to-end chain: FU2→FU3→breakup→exhausted (step=4)")
+        assert r["cadence_step"]   == 2,                     f"T8-R3 step={r['cadence_step']}"
+        assert r["send_status"]    == SEND_STATUS_EXHAUSTED, f"T8-R3 send_status={r['send_status']!r}"
+        assert r["gmail_draft_id"] is None,                  f"T8-R3 draft_id={r['gmail_draft_id']!r}"
+        assert len(svc.created) == 1, \
+            f"T8-R3 a third draft was created: {svc.created}"
+        print("  PASS  [T8] end-to-end chain: initial→followup_2→exhausted "
+              "(one follow-up, then stop — no third draft)")
 
     # ── T9: labelIds=['DRAFT'] → pending → skipped, record unchanged ──────────
     with tempfile.TemporaryDirectory() as tmp:
@@ -751,7 +777,44 @@ def _run_tests() -> None:
     print("  PASS  [T19] SCOPE: send_status rejects 'declined' and 'replied' "
           "(ENUMS enforces the 3-value vocabulary)")
 
-    print(f"\nAll 19 poller tests passed.")
+    # ── T20: cadence_step == _COMPLETE_STEP (2), send_status='in-cadence'
+    #         → retired to 'exhausted' THIS cycle, zero Gmail calls. This is
+    #         the hole found during the trim's design review — closed by the
+    #         retire-instead-of-strand branch at the top of the loop. ───────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, cadence_step=2, send_status=SEND_STATUS_IN_CADENCE)  # no draft waiting
+        svc = _FakeService()
+        stats = run_poll(_service=svc, db_path=db)
+        after = get_record(db)
+        assert after["send_status"] == SEND_STATUS_EXHAUSTED, \
+            f"T20 send_status={after['send_status']!r}"
+        assert stats["checked"] == 0, f"T20 checked={stats['checked']} (should never enter the main body)"
+        assert stats["retired"] == 1, f"T20 retired={stats['retired']}"
+        assert svc.get_calls == [], f"T20 Gmail drafts().get() called: {svc.get_calls}"
+        assert svc.created   == [], f"T20 Gmail drafts().create() called: {svc.created}"
+        print("  PASS  [T20] cadence_step=2, send_status='in-cadence' → retired "
+              "to 'exhausted', zero Gmail calls")
+
+    # ── T21: cadence_step=3 (above the new ceiling) → also retired, not
+    #         stranded — proves this isn't an off-by-one fix for exactly 2 ──
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, cadence_step=3, send_status=SEND_STATUS_IN_CADENCE)
+        svc = _FakeService()
+        stats = run_poll(_service=svc, db_path=db)
+        after = get_record(db)
+        assert after["send_status"] == SEND_STATUS_EXHAUSTED, \
+            f"T21 send_status={after['send_status']!r}"
+        assert stats["retired"] == 1, f"T21 retired={stats['retired']}"
+        assert svc.get_calls == [], f"T21 Gmail drafts().get() called: {svc.get_calls}"
+        print("  PASS  [T21] cadence_step=3 (above ceiling) → also retired, not stranded")
+
+    # ── T22: _COMPLETE_STEP is derived from _CADENCE, not hardcoded ────────
+    assert _COMPLETE_STEP == 2, f"T22 _COMPLETE_STEP={_COMPLETE_STEP}, expected 2"
+    assert _COMPLETE_STEP == max(_CADENCE, default=0) + 1, \
+        f"T22 _COMPLETE_STEP={_COMPLETE_STEP} != max(_CADENCE, default=0)+1"
+    print("  PASS  [T22] _COMPLETE_STEP == 2, derived from _CADENCE (not hardcoded)")
+
+    print(f"\nAll 22 poller tests passed.")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
