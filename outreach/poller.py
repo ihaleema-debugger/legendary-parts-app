@@ -38,9 +38,22 @@ FOLLOWUP_3_MIN_DAY = 8
 BREAKUP_MIN_DAY    = 14
 
 # ── send_status vocabulary ────────────────────────────────────────────────────
+# send_status records what WE did (sends), not what the recipient did — that's
+# reply_status's job (see outreach_state.py), untouched by this daemon.
 SEND_STATUS_IN_CADENCE = "in-cadence"   # cadence active; follow-ups will be drafted
-SEND_STATUS_COMPLETE   = "complete"     # breakup sent; nothing further
-SEND_STATUS_DECLINED   = "declined"     # draft trashed or hard-deleted; cadence never started
+SEND_STATUS_EXHAUSTED  = "exhausted"    # last scheduled touch sent; cadence ran its course
+SEND_STATUS_WITHDRAWN  = "withdrawn"    # a watched draft was trashed or gone; we stopped,
+                                         # reason unrecorded — see cadence_step for how far it got
+
+# Watch a row iff it is actionable — inclusion, not exclusion. An exclusion
+# test ("is this row finished?") fails open on any value outside the
+# exclusion set; it's only safe if that enumeration is exhaustive, and
+# send_status has held a value outside every enumeration written for it
+# since the column was created (11 legacy 'declined' rows, predating this
+# vocabulary). Inclusion fails closed instead: anything not explicitly
+# recognised as active is simply not watched — see the WARNING log in
+# run_poll() below for what happens to those rows instead of silence.
+ACTIVE_STATES = {None, SEND_STATUS_IN_CADENCE}
 
 # ── cadence map: cadence_step → (template_key, min_day) ──────────────────────
 # step represents emails SENT so far; map gives the key for the NEXT touch.
@@ -153,13 +166,27 @@ def run_poll(
         if sender_path.exists() else {}
     )
 
-    # Include prospects with a draft waiting AND prospects mid-cadence with no draft yet
-    # (the latter have sent their last email and are waiting for the next due date).
-    to_watch = [
-        p for p in state.get_all()
-        if (p.get("gmail_draft_id") or p.get("send_status") == SEND_STATUS_IN_CADENCE)
-        and p.get("send_status") not in (SEND_STATUS_COMPLETE, SEND_STATUS_DECLINED)
-    ]
+    # Watched iff send_status in ACTIVE_STATES — covers a fresh prospect with
+    # no draft yet (NULL) and one whose initial draft is pending/unsent
+    # (also NULL — Phase A below is what needs to see it), plus anything
+    # actively mid-cadence. exhausted/withdrawn are correctly, silently
+    # excluded (expected terminal states, not an error). Anything else —
+    # legacy or mistyped values this vocabulary has never recognised — is
+    # also excluded, but loudly: see the WARNING below, not silence.
+    to_watch = []
+    all_prospects = state.get_all()
+    for p in all_prospects:
+        status = p.get("send_status")
+        if status in ACTIVE_STATES:
+            to_watch.append(p)
+        elif status not in (SEND_STATUS_EXHAUSTED, SEND_STATUS_WITHDRAWN):
+            logger.warning(
+                "domain=%r has unrecognised send_status=%r — not watched. "
+                "Known values: NULL, %r, %r, %r. This row needs a backfill "
+                "or manual correction, not silence.",
+                p.get("domain"), status,
+                SEND_STATUS_IN_CADENCE, SEND_STATUS_EXHAUSTED, SEND_STATUS_WITHDRAWN,
+            )
 
     stats = dict(checked=0, advanced=0, prepared=0, skipped=0, retired=0, errors=0)
 
@@ -186,7 +213,7 @@ def run_poll(
 
                 if label in ("trashed", "gone"):
                     state.upsert_prospect(domain,
-                                          send_status=SEND_STATUS_DECLINED,
+                                          send_status=SEND_STATUS_WITHDRAWN,
                                           gmail_draft_id=None)
                     stats["retired"] += 1
                     if label == "trashed":
@@ -205,7 +232,7 @@ def run_poll(
                     updates["send_status"]      = SEND_STATUS_IN_CADENCE
 
                 if new_step >= 4:
-                    updates["send_status"] = SEND_STATUS_COMPLETE
+                    updates["send_status"] = SEND_STATUS_EXHAUSTED
 
                 state.upsert_prospect(domain, **updates)
                 stats["advanced"] += 1
@@ -299,6 +326,7 @@ def _run_tests() -> None:
             self._svc = svc
 
         def get(self, userId, id):
+            self._svc.get_calls.append(id)
             if id not in self._svc.existing:
                 return _FakeReq(err=HttpError(resp=_FakeResp(404), content=b"Not Found"))
             labels = self._svc.existing[id]
@@ -327,6 +355,7 @@ def _run_tests() -> None:
             else:
                 self.existing = dict(existing or {})
             self.created = []
+            self.get_calls = []  # draft_ids drafts().get() was actually called with
 
         def users(self):
             return _FakeUsers(self)
@@ -345,6 +374,28 @@ def _run_tests() -> None:
     def make_db(tmp_dir, **fields) -> Path:
         db = Path(tmp_dir) / "test.db"
         OutreachState(db_path=db).upsert_prospect("test.com", status="approved", **fields)
+        return db
+
+    def make_db_raw(tmp_dir, **fields) -> Path:
+        """Like make_db, but inserts via raw SQL — bypasses upsert_prospect's
+        ENUMS validation entirely. Simulates a legacy row written before a
+        column's vocabulary was constrained, exactly how the real 11
+        'declined' rows exist in outreach_state.db today: upsert_prospect
+        would now refuse to write "declined", but the row was already there
+        before that constraint existed and nothing has touched it since."""
+        import sqlite3
+        db = Path(tmp_dir) / "test.db"
+        OutreachState(db_path=db)  # creates schema only
+        fields.setdefault("status", "approved")
+        fields.setdefault("created_at", "2026-01-01T00:00:00+00:00")
+        fields.setdefault("updated_at", "2026-01-01T00:00:00+00:00")
+        cols = ["domain"] + list(fields.keys())
+        vals = ["test.com"] + list(fields.values())
+        placeholders = ", ".join(["?"] * len(vals))
+        conn = sqlite3.connect(str(db))
+        conn.execute(f"INSERT INTO prospects ({', '.join(cols)}) VALUES ({placeholders})", vals)
+        conn.commit()
+        conn.close()
         return db
 
     def get_record(db) -> dict:
@@ -438,7 +489,7 @@ def _run_tests() -> None:
 
     # ── T6: cadence_step=4 → do nothing ──────────────────────────────────────
     with tempfile.TemporaryDirectory() as tmp:
-        db  = make_db(tmp, cadence_step=4, send_status=SEND_STATUS_COMPLETE)
+        db  = make_db(tmp, cadence_step=4, send_status=SEND_STATUS_EXHAUSTED)
         svc = _FakeService()
         before = get_record(db)
         run_poll(_service=svc, db_path=db)
@@ -459,7 +510,7 @@ def _run_tests() -> None:
         print("  PASS  [T7] SCOPE: poller never writes 'status' column")
 
     # ── T8: end-to-end chain ──────────────────────────────────────────────────
-    # FU2 sent → FU3 prepared; FU3 sent → breakup prepared; breakup sent → complete.
+    # FU2 sent → FU3 prepared; FU3 sent → breakup prepared; breakup sent → exhausted.
     with tempfile.TemporaryDirectory() as tmp:
         day0 = (datetime.now(timezone.utc) - timedelta(days=20)).isoformat()
         tp   = write_json(tmp, "templates.json", _FAKE_TEMPLATES)
@@ -491,15 +542,15 @@ def _run_tests() -> None:
         assert r["send_status"] == SEND_STATUS_IN_CADENCE, \
             f"T8-R2 send_status={r['send_status']!r}"
 
-        # Run 3: breakup SENT → step→4, complete
+        # Run 3: breakup SENT → step→4, exhausted
         svc.mark_sent(svc.created[1])
         run_poll(_service=svc, db_path=db, templates_path=tp, sender_path=sp)
         r = get_record(db)
         assert r["cadence_step"]  == 4,                f"T8-R3 step={r['cadence_step']}"
-        assert r["send_status"]   == SEND_STATUS_COMPLETE, \
+        assert r["send_status"]   == SEND_STATUS_EXHAUSTED, \
             f"T8-R3 send_status={r['send_status']!r}"
         assert r["gmail_draft_id"] is None,            f"T8-R3 draft_id={r['gmail_draft_id']!r}"
-        print("  PASS  [T8] end-to-end chain: FU2→FU3→breakup→complete (step=4)")
+        print("  PASS  [T8] end-to-end chain: FU2→FU3→breakup→exhausted (step=4)")
 
     # ── T9: labelIds=['DRAFT'] → pending → skipped, record unchanged ──────────
     with tempfile.TemporaryDirectory() as tmp:
@@ -527,30 +578,30 @@ def _run_tests() -> None:
         assert after["last_action_date"] is not None, "T10 last_action_date not stamped"
         print("  PASS  [T10] labelIds=['SENT'] → advanced, day-0 stamped, send_status='in-cadence'")
 
-    # ── T11: labelIds=['DRAFT','TRASH'] → trashed → retired, declined ─────────
+    # ── T11: labelIds=['DRAFT','TRASH'] → trashed → retired, withdrawn ────────
     with tempfile.TemporaryDirectory() as tmp:
         db  = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
         svc = _FakeService(existing={"d-001": ["DRAFT", "TRASH"]})
         run_poll(_service=svc, db_path=db)
         after = get_record(db)
-        assert after["send_status"]    == SEND_STATUS_DECLINED, \
+        assert after["send_status"]    == SEND_STATUS_WITHDRAWN, \
             f"T11 send_status={after['send_status']!r}"
         assert after["gmail_draft_id"] is None, f"T11 draft_id still set: {after['gmail_draft_id']!r}"
         assert after["cadence_step"]   == 0,    f"T11 cadence_step advanced: {after['cadence_step']}"
         assert after["last_action_date"] is None, "T11 last_action_date wrongly stamped"
-        print("  PASS  [T11] labelIds=['DRAFT','TRASH'] → trashed → retired, send_status='declined'")
+        print("  PASS  [T11] labelIds=['DRAFT','TRASH'] → trashed → retired, send_status='withdrawn'")
 
-    # ── T12: HttpError 404 → gone → retired, declined ─────────────────────────
+    # ── T12: HttpError 404 → gone → retired, withdrawn ─────────────────────────
     with tempfile.TemporaryDirectory() as tmp:
         db  = make_db(tmp, gmail_draft_id="d-001", gmail_thread_id="t-001", cadence_step=0)
         svc = _FakeService()                           # d-001 not in existing → 404 → gone
         run_poll(_service=svc, db_path=db)
         after = get_record(db)
-        assert after["send_status"]    == SEND_STATUS_DECLINED, \
+        assert after["send_status"]    == SEND_STATUS_WITHDRAWN, \
             f"T12 send_status={after['send_status']!r}"
         assert after["gmail_draft_id"] is None, f"T12 draft_id still set"
         assert after["cadence_step"]   == 0,    f"T12 cadence_step advanced: {after['cadence_step']}"
-        print("  PASS  [T12] HttpError 404 → gone → retired, send_status='declined'")
+        print("  PASS  [T12] HttpError 404 → gone → retired, send_status='withdrawn'")
 
     # ── T13: HttpError 500 → _draft_state re-raises; outer handler counts error ─
     with tempfile.TemporaryDirectory() as tmp:
@@ -581,7 +632,126 @@ def _run_tests() -> None:
         assert stats["errors"] == 1, f"T13 expected errors=1, got {stats['errors']}"
         print("  PASS  [T13] HttpError 500 → _draft_state re-raises; outer handler counts as error")
 
-    print(f"\nAll 13 poller tests passed.")
+    # ── T14: send_status='declined' (legacy value, predates this vocabulary)
+    #         → NOT watched, zero Gmail calls. Asserted on the mock's actual
+    #         call count, not just on stats['checked'] ─────────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db_raw(tmp, send_status="declined", gmail_draft_id="d-001",
+                           gmail_thread_id="t-001", cadence_step=2)
+        svc = _FakeService(existing={"d-001": ["DRAFT"]})
+        stats = run_poll(_service=svc, db_path=db)
+        assert stats["checked"] == 0, f"T14 checked={stats['checked']}"
+        assert svc.get_calls == [], f"T14 Gmail drafts().get() was called: {svc.get_calls}"
+        print("  PASS  [T14] send_status='declined' (legacy value) → not watched, zero Gmail calls")
+
+    # ── T15: send_status='banana' — a value nobody will ever add to the
+    #         vocab, proving the fail-closed property in general, not just
+    #         for the one legacy value we already know about ────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db_raw(tmp, send_status="banana", gmail_draft_id="d-002", gmail_thread_id="t-002")
+        svc = _FakeService(existing={"d-002": ["DRAFT"]})
+        stats = run_poll(_service=svc, db_path=db)
+        assert stats["checked"] == 0, f"T15 checked={stats['checked']}"
+        assert svc.get_calls == [], f"T15 Gmail drafts().get() was called: {svc.get_calls}"
+        print("  PASS  [T15] send_status='banana' (never enumerated) → not watched, zero Gmail calls")
+
+    # ── T16: send_status NULL and 'in-cadence' ARE watched ────────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, gmail_draft_id="d-003", gmail_thread_id="t-003")  # no send_status → NULL
+        svc = _FakeService(existing={"d-003": ["DRAFT"]})
+        stats = run_poll(_service=svc, db_path=db)
+        assert stats["checked"] == 1, f"T16a NULL send_status checked={stats['checked']}"
+        assert svc.get_calls == ["d-003"], f"T16a Gmail get() calls={svc.get_calls}"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, send_status=SEND_STATUS_IN_CADENCE, cadence_step=1,
+                       gmail_draft_id="d-004", gmail_thread_id="t-004")
+        svc = _FakeService(existing={"d-004": ["DRAFT"]})
+        stats = run_poll(_service=svc, db_path=db)
+        assert stats["checked"] == 1, f"T16b in-cadence checked={stats['checked']}"
+        assert svc.get_calls == ["d-004"], f"T16b Gmail get() calls={svc.get_calls}"
+    print("  PASS  [T16] send_status NULL and 'in-cadence' → watched")
+
+    # ── T17: send_status 'exhausted' and 'withdrawn' are NOT watched
+    #         (recognised terminal states — expected, no WARNING for these) ─
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, send_status=SEND_STATUS_EXHAUSTED, cadence_step=4,
+                       gmail_draft_id="d-005", gmail_thread_id="t-005")
+        svc = _FakeService(existing={"d-005": ["DRAFT"]})
+        stats = run_poll(_service=svc, db_path=db)
+        assert stats["checked"] == 0, f"T17a exhausted checked={stats['checked']}"
+        assert svc.get_calls == [], f"T17a Gmail get() calls={svc.get_calls}"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db(tmp, send_status=SEND_STATUS_WITHDRAWN,
+                       gmail_draft_id="d-006", gmail_thread_id="t-006")
+        svc = _FakeService(existing={"d-006": ["DRAFT"]})
+        stats = run_poll(_service=svc, db_path=db)
+        assert stats["checked"] == 0, f"T17b withdrawn checked={stats['checked']}"
+        assert svc.get_calls == [], f"T17b Gmail get() calls={svc.get_calls}"
+    print("  PASS  [T17] send_status 'exhausted' and 'withdrawn' → not watched")
+
+    # ── T18: WARNING fires for unrecognised values ('declined', 'banana')
+    #         and stays silent for all four known values (NULL, in-cadence,
+    #         exhausted, withdrawn) ────────────────────────────────────────
+    from unittest.mock import patch as _mock_patch
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db_raw(tmp, send_status="declined", gmail_draft_id="d-007", gmail_thread_id="t-007")
+        svc = _FakeService(existing={"d-007": ["DRAFT"]})
+        with _mock_patch.object(logger, "warning") as mock_warn:
+            run_poll(_service=svc, db_path=db)
+        assert mock_warn.call_count == 1, \
+            f"T18a expected 1 WARNING for 'declined', got {mock_warn.call_count}"
+        assert "declined" in str(mock_warn.call_args), \
+            f"T18a WARNING didn't name the value: {mock_warn.call_args}"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db  = make_db_raw(tmp, send_status="banana", gmail_draft_id="d-008", gmail_thread_id="t-008")
+        svc = _FakeService(existing={"d-008": ["DRAFT"]})
+        with _mock_patch.object(logger, "warning") as mock_warn:
+            run_poll(_service=svc, db_path=db)
+        assert mock_warn.call_count == 1, \
+            f"T18b expected 1 WARNING for 'banana', got {mock_warn.call_count}"
+        assert "banana" in str(mock_warn.call_args), \
+            f"T18b WARNING didn't name the value: {mock_warn.call_args}"
+
+    for status, extra in [
+        (None,                   {}),
+        (SEND_STATUS_IN_CADENCE, {"cadence_step": 1}),
+        (SEND_STATUS_EXHAUSTED,  {"cadence_step": 4}),
+        (SEND_STATUS_WITHDRAWN,  {}),
+    ]:
+        with tempfile.TemporaryDirectory() as tmp:
+            fields = dict(gmail_draft_id="d-009", gmail_thread_id="t-009", **extra)
+            if status is not None:
+                fields["send_status"] = status
+            db  = make_db(tmp, **fields)
+            svc = _FakeService(existing={"d-009": ["DRAFT"]})
+            with _mock_patch.object(logger, "warning") as mock_warn:
+                run_poll(_service=svc, db_path=db)
+            assert mock_warn.call_count == 0, \
+                f"T18c send_status={status!r} unexpectedly triggered WARNING: {mock_warn.call_args_list}"
+    print("  PASS  [T18] WARNING fires only for unrecognised values, "
+          "silent for NULL/in-cadence/exhausted/withdrawn")
+
+    # ── T19: SCOPE — send_status vocabulary rejects 'declined' and 'replied';
+    #         ENUMS enforces this before any write reaches the DB, so no
+    #         production code path can write either value to send_status ────
+    with tempfile.TemporaryDirectory() as tmp:
+        db = Path(tmp) / "scope.db"
+        state = OutreachState(db_path=db)
+        for bad_value in ("declined", "replied"):
+            raised = False
+            try:
+                state.upsert_prospect("test.com", send_status=bad_value)
+            except ValueError as exc:
+                raised = bad_value in str(exc)
+            assert raised, f"T19 send_status={bad_value!r} was accepted or raised the wrong error"
+    print("  PASS  [T19] SCOPE: send_status rejects 'declined' and 'replied' "
+          "(ENUMS enforces the 3-value vocabulary)")
+
+    print(f"\nAll 19 poller tests passed.")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

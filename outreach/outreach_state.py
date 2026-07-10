@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_DB_PATH = Path(__file__).parent / "outreach_state.db"
 
 # ── single source of truth for constrained column values ─────────────────────
-# send_status is intentionally absent — its vocab isn't finalised until s6.
 
 ENUMS = {
     "status": frozenset({
@@ -36,6 +35,14 @@ ENUMS = {
     }),
     "draft_status": frozenset({
         "needs-review", "approved", "edited", "rejected",
+    }),
+    # What WE did (sends), tracked by outreach/poller.py. Distinct from
+    # reply_status below, which is what THEY did — send_status never encodes
+    # recipient behaviour (see poller.py's SEND_STATUS_* constants). NULL
+    # ("not started") is always permitted regardless of this frozenset —
+    # _validate_enum_fields() skips validation for None.
+    "send_status": frozenset({
+        "in-cadence", "exhausted", "withdrawn",
     }),
     "reply_status": frozenset({
         "none", "replied", "bounced", "unsub",

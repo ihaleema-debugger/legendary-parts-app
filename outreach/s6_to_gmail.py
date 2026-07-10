@@ -4,8 +4,8 @@ No send path exists in this file. Human approval gate is held externally.
 
 Before drafting, refuses any domain whose prospects row has a non-NULL
 send_status (i.e. anything other than the untouched/new state) — that means
-outreach/poller.py's cadence daemon already owns this domain (mid-cadence,
-complete, or declined) and a brand-new initial-pitch draft would duplicate
+outreach/poller.py's cadence daemon already owns this domain (in-cadence,
+exhausted, or withdrawn) and a brand-new initial-pitch draft would duplicate
 or clash with that in-flight relationship. See outreach/poller.py's
 SEND_STATUS_* constants for the non-NULL vocabulary.
 """
@@ -29,8 +29,8 @@ def run_to_gmail(valid_drafts, token_path=_DEFAULT_TOKEN, db_path=None):
     Returns {created, skipped, refused}:
       created  — domains a new Gmail draft was created for.
       skipped  — domains that already had a gmail_draft_id set.
-      refused  — domains whose row has a non-NULL send_status (mid-cadence,
-                 complete, or declined); each entry is
+      refused  — domains whose row has a non-NULL send_status (in-cadence,
+                 exhausted, or withdrawn); each entry is
                  {"domain", "send_status", "cadence_step"}.
 
     db_path overrides the default outreach_state.db (test injection only —
@@ -47,12 +47,15 @@ def run_to_gmail(valid_drafts, token_path=_DEFAULT_TOKEN, db_path=None):
         domain = draft["domain"]
         record = state.get_by_domain(domain)
 
-        # Refuses on ANY non-NULL send_status, including SEND_STATUS_COMPLETE
+        # Refuses on ANY non-NULL send_status, including SEND_STATUS_EXHAUSTED
         # — a cleanly-finished cadence is therefore permanently un-draftable
         # by the sheet track too. Correct for now (there is no re-pitch
-        # concept yet), but a future 'exhausted' terminal state (distinct
-        # from 'complete') would need its own explicit re-pitch path through
-        # this guard — not built here.
+        # concept yet); a future re-pitch flow would need its own explicit
+        # path through this guard — not built here. Checking "is not None"
+        # rather than an enumerated list of values also means this guard
+        # needed no code change when send_status's vocabulary was split into
+        # in-cadence/exhausted/withdrawn — it already covered every terminal
+        # state by construction.
         if record and record.get("send_status") is not None:
             send_status  = record.get("send_status")
             cadence_step = record.get("cadence_step")
@@ -60,7 +63,7 @@ def run_to_gmail(valid_drafts, token_path=_DEFAULT_TOKEN, db_path=None):
                 f"  REFUSE {domain}  send_status={send_status!r}  "
                 f"cadence_step={cadence_step}  "
                 f"reason=domain already owned by the cadence poller "
-                f"(mid-cadence, complete, or declined) — refusing to draft "
+                f"(in-cadence, exhausted, or withdrawn) — refusing to draft "
                 f"a duplicate initial pitch"
             )
             refused.append({
@@ -121,7 +124,9 @@ def _run_tests() -> None:
     from unittest.mock import MagicMock, patch
 
     from outreach.outreach_state import OutreachState as _OutreachState
-    from outreach.poller import SEND_STATUS_IN_CADENCE, SEND_STATUS_DECLINED
+    from outreach.poller import (
+        SEND_STATUS_IN_CADENCE, SEND_STATUS_EXHAUSTED, SEND_STATUS_WITHDRAWN,
+    )
 
     print("Running s6_to_gmail tests...")
 
@@ -158,11 +163,11 @@ def _run_tests() -> None:
         mock_service.users.return_value.drafts.return_value.create.assert_not_called()
         print("  PASS  [T1]  send_status='in-cadence' → refused, create() not called")
 
-    # ── T2: send_status='declined' → refused, no draft created ───────────────
+    # ── T2: send_status='exhausted' → refused, no draft created ──────────────
     with tempfile.TemporaryDirectory() as tmp:
         db = str(_Path(tmp) / "state.db")
         state = _OutreachState(db_path=db)
-        state.upsert_prospect("testpub.com", send_status=SEND_STATUS_DECLINED, cadence_step=0)
+        state.upsert_prospect("testpub.com", send_status=SEND_STATUS_EXHAUSTED, cadence_step=4)
 
         mock_service = _mock_service()
         with patch(f"{__name__}.get_gmail_service", return_value=mock_service):
@@ -170,9 +175,25 @@ def _run_tests() -> None:
 
         assert result["created"] == [], f"T2 created={result['created']}"
         assert len(result["refused"]) == 1, f"T2 refused={result['refused']}"
-        assert result["refused"][0]["send_status"] == SEND_STATUS_DECLINED
+        assert result["refused"][0]["send_status"] == SEND_STATUS_EXHAUSTED
         mock_service.users.return_value.drafts.return_value.create.assert_not_called()
-        print("  PASS  [T2]  send_status='declined' → refused, create() not called")
+        print("  PASS  [T2]  send_status='exhausted' → refused, create() not called")
+
+    # ── T2b: send_status='withdrawn' → refused, no draft created ─────────────
+    with tempfile.TemporaryDirectory() as tmp:
+        db = str(_Path(tmp) / "state.db")
+        state = _OutreachState(db_path=db)
+        state.upsert_prospect("testpub.com", send_status=SEND_STATUS_WITHDRAWN, cadence_step=0)
+
+        mock_service = _mock_service()
+        with patch(f"{__name__}.get_gmail_service", return_value=mock_service):
+            result = run_to_gmail([_DRAFT], db_path=db)
+
+        assert result["created"] == [], f"T2b created={result['created']}"
+        assert len(result["refused"]) == 1, f"T2b refused={result['refused']}"
+        assert result["refused"][0]["send_status"] == SEND_STATUS_WITHDRAWN
+        mock_service.users.return_value.drafts.return_value.create.assert_not_called()
+        print("  PASS  [T2b] send_status='withdrawn' → refused, create() not called")
 
     # ── T3: no row at all for the domain → drafts normally ────────────────────
     with tempfile.TemporaryDirectory() as tmp:
